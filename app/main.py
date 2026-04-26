@@ -1,5 +1,4 @@
-"""
-Main entrypoint for the Data Product Forecasting Streamlit App.
+"""Main entrypoint for the Data Product Forecasting Streamlit App.
 
 This app provides a demand forecasting data product interface
 for business users.
@@ -8,19 +7,16 @@ for business users.
 import streamlit as st
 
 from app.pages import (
-    forecast_exploration,
     batch_export,
-    model_evaluation,
     business_feedback,
+    forecast_exploration,
+    model_evaluation,
 )
-
-from utils.logging import setup_logging, get_logger
+from utils.logging import get_logger, setup_logging
 
 
 def main() -> None:
-    """
-    Initialize application and handle navigation.
-    """
+    """Initialize application and handle navigation."""
     # Inicializar logging PRIMERO
     setup_logging()
 

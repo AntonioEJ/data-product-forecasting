@@ -1,5 +1,4 @@
-"""
-Feature engineering para el pipeline.
+"""Feature engineering para el pipeline.
 
 Toma como base el dataset mensual generado por ETL y agrega:
 - lags adicionales (1,2,4,8) sobre monthly_units
@@ -10,12 +9,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.config import ModelConfig
+from config import ModelConfig
 
 
 def build_features(df: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
-    """
-    Construye features de series de tiempo por (shop_id, item_id).
+    """Construye features de series de tiempo por (shop_id, item_id).
 
     Args:
         df: Dataset mensual base (output de ETL).
@@ -51,8 +49,7 @@ def build_features(df: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
 def make_modeling_dataset(
     df_feat: pd.DataFrame, cfg: ModelConfig
 ) -> tuple[pd.DataFrame, list[str]]:
-    """
-    Genera dataset final eliminando NA en target/features.
+    """Genera dataset final eliminando NA en target/features.
 
     Args:
         df_feat: DataFrame con features.
@@ -63,7 +60,7 @@ def make_modeling_dataset(
     """
     feature_cols = (
         list(cfg.base_features)
-        + [f"lag_{l}" for l in cfg.lags]
+        + [f"lag_{lag}" for lag in cfg.lags]
         + [f"roll_mean_{w}" for w in cfg.rolls]
     )
     required = [cfg.target_col, cfg.time_col] + feature_cols
@@ -78,8 +75,7 @@ def make_modeling_dataset(
 def temporal_split(
     df_model: pd.DataFrame, cfg: ModelConfig
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Split temporal tipo notebook: cutoff por quantile del tiempo.
+    """Split temporal tipo notebook: cutoff por quantile del tiempo.
 
     Args:
         df_model: Dataset listo para modelar.

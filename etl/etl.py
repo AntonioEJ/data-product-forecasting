@@ -1,80 +1,78 @@
-"""
-ETL 01 - Carga, limpieza y agregación mensual Tarea-05
+"""ETL 01 - Carga, limpieza y agregación mensual Tarea-05.
 
 Lee archivos desde:
-  data/raw/
+    data/raw/
 
 Escribe datasets preparados en:
-  data/prep/
+    data/prep/
 
 Escribe outputs de control (opcionales) en:
-  artifacts/
+    artifacts/
 
 Uso:
-  uv run python src/etl.py
+    uv run python src/etl.py.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+import argparse
+import gc
 import logging
-import socket
-from datetime import datetime, timezone
 import os
+import socket
 import subprocess
 import zipfile
-import gc
+from datetime import UTC, datetime
+from pathlib import Path
 
 import pandas as pd
-import argparse
 
 
 ###Argparse
 def parse_args():
+    """Parses ETL command-line arguments."""
     parser = argparse.ArgumentParser(
-        prog  ="processing",
-        description="ETL step: carga, limpieza y agregación mensual"
+        prog="processing", description="ETL step: carga, limpieza y agregación mensual"
     )
 
     parser.add_argument(
         "--raw-dir",
         type=str,
         default=None,
-        help="Directorio de datos crudos. Si no se especifica, usa data/raw"
+        help="Directorio de datos crudos. Si no se especifica, usa data/raw",
     )
 
     parser.add_argument(
         "--prep-dir",
         type=str,
         default=None,
-        help="Directorio de salida preprocesada. Si no se especifica, usa data/prep"
+        help="Directorio de salida preprocesada. Si no se especifica, usa data/prep",
     )
 
     parser.add_argument(
         "--artifacts-dir",
         type=str,
         default=None,
-        help="Directorio de artifacts. Si no se especifica, usa artifacts/"
+        help="Directorio de artifacts. Si no se especifica, usa artifacts/",
     )
 
     return parser.parse_args()
+
 
 # ----------------------------
 # Logging
 # ----------------------------
 class UTCFormatter(logging.Formatter):
-    """
-    Formatter que fuerza timestamps en UTC y en formato ISO 8601 (con sufijo Z).
-    """
+    """Formatter que fuerza timestamps en UTC y en formato ISO 8601 (con sufijo Z)."""
 
     def formatTime(self, record, datefmt=None):  # noqa: N802 (firma esperada por logging)
-        dt = datetime.fromtimestamp(record.created, tz=timezone.utc)
+        """Format log time in UTC ISO 8601."""
+        dt = datetime.fromtimestamp(record.created, tz=UTC)
         return dt.isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def setup_logging(log_dir: Path) -> logging.LoggerAdapter:
-    """
-    Configura el sistema de logging del ETL.
+    """Configura el sistema de logging del ETL.
 
     Los logs se escriben:
     - En consola
@@ -85,7 +83,7 @@ def setup_logging(log_dir: Path) -> logging.LoggerAdapter:
     log_dir : pathlib.Path
         Directorio donde se almacenarán los logs.
 
-    Returns
+    Returns:
     -------
     logging.LoggerAdapter
         Logger con contexto (hostname) incluido en cada evento.
@@ -129,8 +127,7 @@ logger: logging.LoggerAdapter
 # Utilidades de rutas
 # ----------------------------
 def find_repo_root(start: Path) -> Path:
-    """
-    Encuentra el directorio raíz del proyecto de la tarea.
+    """Encuentra el directorio raíz del proyecto de la tarea.
 
     El root se identifica buscando un archivo `pyproject.toml` y la carpeta `data/`
     en alguno de los directorios padre.
@@ -151,8 +148,8 @@ def find_repo_root(start: Path) -> Path:
 # Kaggle download (Extract) - Competencia
 # ----------------------------
 def _kaggle_credentials_available() -> bool:
-    """
-    Valida si hay credenciales de Kaggle disponibles por:
+    """Valida si hay credenciales de Kaggle disponibles por.
+
     - env vars: KAGGLE_USERNAME y KAGGLE_KEY
     - archivo: ~/.kaggle/kaggle.json
     """
@@ -168,8 +165,8 @@ def download_kaggle_competition_data(
     required_files: list[str],
     force: bool = False,
 ) -> None:
-    """
-    Descarga datos de una competencia de Kaggle a data/raw usando Kaggle API.
+    """Descarga datos de una competencia de Kaggle a data/raw usando Kaggle API.
+
     Si los archivos requeridos ya existen, no descarga (a menos que force=True).
     """
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -253,8 +250,9 @@ def download_translations_kagglehub(
     translation_files: list[str],
     force: bool = False,
 ) -> None:
-    """
-    Descarga 3 archivos de traducciones (en inglés) desde KaggleHub y los guarda en data/raw.
+    """Descarga 3 archivos de traducciones (en inglés) desde KaggleHub.
+
+    Los guarda en data/raw.
     """
     raw_dir.mkdir(parents=True, exist_ok=True)
 
@@ -291,9 +289,7 @@ def download_translations_kagglehub(
 # Lectura de insumos
 # ----------------------------
 def load_raw_data(raw_dir: Path) -> dict[str, pd.DataFrame]:
-    """
-    Carga los archivos crudos requeridos desde `data/raw`.
-    """
+    """Carga los archivos crudos requeridos desde `data/raw`."""
     required = [
         "sales_train.csv",
         "test.csv",
@@ -325,9 +321,7 @@ def load_raw_data(raw_dir: Path) -> dict[str, pd.DataFrame]:
 # Transformaciones
 # ----------------------------
 def build_enriched_sales(df_dict: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """
-    Construye el dataset de ventas enriquecido tipo tabla de hechos.
-    """
+    """Construye el dataset de ventas enriquecido tipo tabla de hechos."""
     logger.info("Construyendo dataset enriquecido tipo tabla de hechos")
 
     sales = df_dict["sales"]
@@ -342,8 +336,12 @@ def build_enriched_sales(df_dict: dict[str, pd.DataFrame]) -> pd.DataFrame:
     )
 
     # Tipos (downcast para RAM)
-    df["item_price"] = pd.to_numeric(df["item_price"], errors="coerce", downcast="float")
-    df["item_cnt_day"] = pd.to_numeric(df["item_cnt_day"], errors="coerce", downcast="float")
+    df["item_price"] = pd.to_numeric(
+        df["item_price"], errors="coerce", downcast="float"
+    )
+    df["item_cnt_day"] = pd.to_numeric(
+        df["item_cnt_day"], errors="coerce", downcast="float"
+    )
 
     # Fecha
     df["date"] = pd.to_datetime(df["date"], format="%d.%m.%Y", errors="coerce")
@@ -365,9 +363,7 @@ def build_enriched_sales(df_dict: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 
 def build_yearly_control(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Genera métricas anuales de control.
-    """
+    """Genera métricas anuales de control."""
     logger.info("Generando métricas anuales cifras control")
 
     return df.groupby("year", as_index=False).agg(
@@ -380,9 +376,10 @@ def build_yearly_control(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def build_monthly_with_lags(df: pd.DataFrame, items_lookup: pd.DataFrame) -> pd.DataFrame:
-    """
-    Genera una tabla agregada mensual con variables lag.
+def build_monthly_with_lags(
+    df: pd.DataFrame, items_lookup: pd.DataFrame
+) -> pd.DataFrame:
+    """Genera una tabla agregada mensual con variables lag.
 
     - Mantiene columna `date` con month-end (equivalente a freq="ME").
     - Quita `item_name` de la llave (groupby) y lo agrega después (opción B).
@@ -431,16 +428,22 @@ def build_monthly_with_lags(df: pd.DataFrame, items_lookup: pd.DataFrame) -> pd.
     monthly["month"] = monthly["date"].dt.month.astype("int8")
 
     # 4) Orden para lags (igual que antes)
-    monthly = monthly.sort_values(["shop_id", "item_id", "year", "month"]).reset_index(drop=True)
+    monthly = monthly.sort_values(["shop_id", "item_id", "year", "month"]).reset_index(
+        drop=True
+    )
 
     # 5) Lags (1 mes)
-    monthly["monthly_sales_lag_1"] = monthly.groupby(["shop_id", "item_id"], sort=False)["monthly_sales"].shift(1)
-    monthly["monthly_units_lag_1"] = monthly.groupby(["shop_id", "item_id"], sort=False)["monthly_units"].shift(1)
+    monthly["monthly_sales_lag_1"] = monthly.groupby(
+        ["shop_id", "item_id"], sort=False
+    )["monthly_sales"].shift(1)
+    monthly["monthly_units_lag_1"] = monthly.groupby(
+        ["shop_id", "item_id"], sort=False
+    )["monthly_units"].shift(1)
 
     # 6) Fill solo lags
-    monthly[["monthly_sales_lag_1", "monthly_units_lag_1"]] = (
-        monthly[["monthly_sales_lag_1", "monthly_units_lag_1"]].fillna(0)
-    )
+    monthly[["monthly_sales_lag_1", "monthly_units_lag_1"]] = monthly[
+        ["monthly_sales_lag_1", "monthly_units_lag_1"]
+    ].fillna(0)
 
     # 7) Layout idéntico al previo
     monthly = monthly[
@@ -471,12 +474,10 @@ def build_monthly_with_lags(df: pd.DataFrame, items_lookup: pd.DataFrame) -> pd.
 # Main
 # ----------------------------
 def main() -> None:
-    """
-    Ejecuta el pipeline ETL completo para la Tarea-03.
-    """
-    #Checar el logger. 
+    """Ejecuta el pipeline ETL completo para la Tarea-03."""
+    # Checar el logger.
     global logger
-    
+
     args = parse_args()
 
     repo_root = find_repo_root(Path(__file__))

@@ -1,3 +1,5 @@
+"""Test helpers for ETL outputs."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,6 +23,10 @@ def assert_outputs_equal(
     sort_keys: list[str] | None = None,
     check_dtypes: bool = False,
 ) -> None:
+    """Asserts that two output files are equal.
+
+    Optionally sorts and checks dtypes.
+    """
     old = _load(old_path)
     new = _load(new_path)
 
@@ -43,6 +49,8 @@ def assert_outputs_equal(
 
 # ✅ ESTE ES EL TEST REAL QUE PYTEST VA A EJECUTAR
 def test_monthly_outputs_equal():
+    """Test that monthly_with_lags outputs are equal."""
+    """Test that monthly_with_lags outputs are equal."""
     base = Path("data/prep")
 
     assert_outputs_equal(
@@ -54,6 +62,8 @@ def test_monthly_outputs_equal():
 
 
 def test_df_base_outputs_equal():
+    """Test that df_base outputs are equal."""
+    """Test that df_base outputs are equal."""
     base = Path("data/prep")
 
     assert_outputs_equal(

@@ -1,1 +1,1 @@
-# Streamlit app package init
+"""Streamlit app package init."""

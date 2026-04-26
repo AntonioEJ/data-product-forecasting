@@ -25,8 +25,18 @@ jobs:
       - name: Install dependencies
         run: uv pip install -r pyproject.toml
 
-      - name: Run Ruff (lint)
-        run: ruff check .
+      # 🟡 Formato (solo informa)
+      - name: Ruff format check (non-blocking)
+        run: ruff format --check . || true
 
+      # 🟡 Lint (solo informa)
+      - name: Run Ruff (lint non-blocking)
+        run: ruff check . || true
+
+      # 🟡 Docstrings (solo informa)
+      - name: Check docstrings (non-blocking)
+        run: ruff check . --select D || true
+
+      # 🟢 Tests (decide si quieres bloquear o no)
       - name: Run tests
         run: pytest

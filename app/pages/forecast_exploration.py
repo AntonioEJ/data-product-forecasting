@@ -1,16 +1,16 @@
-"""
-Forecast exploration view.
+"""Forecast exploration view.
 
 Allows users to filter and visualize demand forecasts.
 """
 
-import streamlit as st
 import pandas as pd
-
+import streamlit as st
 
 from utils.logging import get_logger
 
+
 def render():
+    """Render the forecast exploration page."""
     logger = get_logger(__name__)
     st.title("🔎 Forecast Exploration")
 
@@ -22,10 +22,12 @@ def render():
 
     with st.spinner("Loading forecast data..."):
         # TODO: reemplazar por query real a RDS
-        data = pd.DataFrame({
-            "date": pd.date_range(start="2024-01-01", periods=30),
-            "sales": range(30),
-        })
+        data = pd.DataFrame(
+            {
+                "date": pd.date_range(start="2024-01-01", periods=30),
+                "sales": range(30),
+            }
+        )
 
     st.subheader("Forecast Data")
     st.dataframe(data)

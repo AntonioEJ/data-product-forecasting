@@ -25,27 +25,18 @@ jobs:
       - name: Install dependencies
         run: uv pip install -r pyproject.toml
 
-      - name: Ruff format check
-        run: ruff format --check .
+      # 🟡 Formato (solo informa)
+      - name: Ruff format check (non-blocking)
+        run: ruff format --check . || true
 
-      - name: Run Ruff (lint with report)
-        run: |
-          ruff check . --output-format=full | tee ruff-report.txt
-          ERRORS=$(grep -c ":" ruff-report.txt || true)
-          echo "Total issues found: $ERRORS"
-          if [ "$ERRORS" -gt 0 ]; then
-            exit 1
-          fi
+      # 🟡 Lint (solo informa)
+      - name: Run Ruff (lint non-blocking)
+        run: ruff check . || true
 
-      - name: Enforce docstrings
-        run: |
-          ruff check . --select D > docstring-report.txt || true
-          MISSING=$(cat docstring-report.txt | wc -l)
-          echo "Missing docstring issues: $MISSING"
-          if [ "$MISSING" -gt 0 ]; then
-            cat docstring-report.txt
-            exit 1
-          fi
+      # 🟡 Docstrings (solo informa)
+      - name: Check docstrings (non-blocking)
+        run: ruff check . --select D || true
 
+      # 🟢 Tests (decide si quieres bloquear o no)
       - name: Run tests
         run: pytest

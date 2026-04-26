@@ -1,5 +1,4 @@
-"""
-Configuración central del proyecto.
+"""Configuración central del proyecto.
 
 Define rutas estándar, constantes y parámetros del pipeline para que:
 - no haya strings "mágicos" regados,
@@ -12,9 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+
 def find_repo_root(start: Path) -> Path:
-    """
-    Encuentra el root del proyecto buscando pyproject.toml y data/.
+    """Encuentra el root del proyecto buscando pyproject.toml y data/.
 
     Args:
         start: Ruta base (típicamente __file__).
@@ -35,6 +34,7 @@ def find_repo_root(start: Path) -> Path:
         "Ejecuta dentro de una carpeta de tarea (p.ej. tareas/tarea-03)."
     )
 
+
 @dataclass(frozen=True)
 class PathsConfig:
     """Rutas estándar del proyecto."""
@@ -49,7 +49,7 @@ class PathsConfig:
     reports_dir: Path
 
     @staticmethod
-    def from_repo_root(repo_root: Path) -> "PathsConfig":
+    def from_repo_root(repo_root: Path) -> PathsConfig:
         """Construye la configuración de rutas a partir del root."""
         artifacts_dir = repo_root / "artifacts"
         return PathsConfig(
@@ -63,11 +63,10 @@ class PathsConfig:
             reports_dir=artifacts_dir / "reports",
         )
 
+
 @dataclass(frozen=True)
 class ModelConfig:
-    """
-    Configuración de features y modelado.
-    """
+    """Configuración de features y modelado."""
 
     random_state: int = 42
 

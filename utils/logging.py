@@ -1,23 +1,18 @@
-"""
-Centralized structured logging configuration for data-product-forecasting.
+"""Centralized structured logging configuration for data-product-forecasting.
 
 Designed for AWS CloudWatch compatibility.
 """
 
 import logging
 import sys
-from typing import Optional
 
-LOG_FORMAT = (
-    "%(asctime)s | %(levelname)s | %(name)s | %(module)s | %(message)s"
-)
+LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(module)s | %(message)s"
 
 _LOGGER_INITIALIZED = False
 
 
 def setup_logging(level: int = logging.INFO) -> None:
-    """
-    Configure root logger for structured logging.
+    """Configure root logger for structured logging.
 
     Ensures logs are compatible with AWS CloudWatch and avoids duplicate setup.
 
@@ -51,9 +46,8 @@ def setup_logging(level: int = logging.INFO) -> None:
     _LOGGER_INITIALIZED = True
 
 
-def get_logger(name: Optional[str] = None) -> logging.Logger:
-    """
-    Get a logger instance with consistent configuration.
+def get_logger(name: str | None = None) -> logging.Logger:
+    """Get a logger instance with consistent configuration.
 
     Args:
         name (Optional[str]): Logger name (typically __name__).

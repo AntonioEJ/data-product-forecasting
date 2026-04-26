@@ -1,19 +1,16 @@
-"""
-Model evaluation view.
+"""Model evaluation view.
 
 Displays model performance metrics and comparison vs naive baseline.
 """
 
-import streamlit as st
 import pandas as pd
-
-data = pd.DataFrame({
-st.subheader("Model vs Actual")
-st.line_chart(data.set_index("date"))
+import streamlit as st
 
 from utils.logging import get_logger
 
+
 def render():
+    """Render the model evaluation page."""
     logger = get_logger(__name__)
     st.title("📊 Model Evaluation")
 

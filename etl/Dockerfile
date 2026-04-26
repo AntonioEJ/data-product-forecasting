@@ -14,6 +14,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 # Copia solo la carpeta etl
+
 COPY etl ./etl
 
 # Ejecuta el pipeline ETL

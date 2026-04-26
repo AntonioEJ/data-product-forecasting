@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.config import ModelConfig
+from config import ModelConfig
 
 
 def build_features(df: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:

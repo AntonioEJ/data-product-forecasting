@@ -176,26 +176,33 @@ cd data-product-forecasting-a
 
 #### Ejecución con Docker (Pipeline por etapas)
 
-Construye y ejecuta los contenedores para cada etapa del pipeline:
+
+Construye y ejecuta el contenedor para el pipeline ETL y procesamiento batch (desde la raíz del proyecto):
 
 ```bash
-# Processing (ETL y Feature Engineering)
-docker build -t ml-processing:latest -f src/processing/Dockerfile .
-docker run --rm -v "$PWD/data:/app/data" -v "$PWD/artifacts:/app/artifacts" ml-processing:latest
-
-# Training
-docker build --no-cache -t ml-training:latest -f src/training/Dockerfile .
+# ETL y Feature Engineering
+docker build -t etl-pipeline:latest -f etl/Dockerfile .
 docker run --rm \
-      -v "$PWD/data:/app/data" \
-      -v "$PWD/artifacts:/app/artifacts" \
-      ml-training:latest
+       -v "$PWD/data:/app/data" \
+       -v "$PWD/artifacts:/app/artifacts" \
+       etl-pipeline:latest
+```
 
-# Inference
-docker build --no-cache -t ml-inference:latest -f src/inference/Dockerfile .
+Notas:
+- El Dockerfile de ETL está en etl/Dockerfile y espera el contexto de build en la raíz del proyecto.
+- El WORKDIR dentro del contenedor es /app y el PYTHONPATH está configurado como /app/etl.
+- El ENTRYPOINT ejecuta el pipeline ETL (etl/etl.py) automáticamente.
+- Si usas otros Dockerfile para etapas como entrenamiento o inferencia, repite el patrón cambiando la ruta y el ENTRYPOINT según corresponda.
+
+Si implementas etapas adicionales (entrenamiento, inferencia), crea los Dockerfile correspondientes en las carpetas models/ o services/ y repite el patrón:
+
+```bash
+# Ejemplo para entrenamiento (si existe Dockerfile en models/)
+docker build -t ml-training:latest -f models/Dockerfile .
 docker run --rm \
-      -v "$PWD/data:/app/data" \
-      -v "$PWD/artifacts:/app/artifacts" \
-      ml-inference:latest
+       -v "$PWD/data:/app/data" \
+       -v "$PWD/artifacts:/app/artifacts" \
+       ml-training:latest
 ```
 
 ---

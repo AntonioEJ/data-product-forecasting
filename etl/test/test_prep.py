@@ -1,4 +1,3 @@
-
 """Test helpers for ETL outputs."""
 
 from __future__ import annotations

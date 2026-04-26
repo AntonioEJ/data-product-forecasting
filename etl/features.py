@@ -60,7 +60,7 @@ def make_modeling_dataset(
     """
     feature_cols = (
         list(cfg.base_features)
-            + [f"lag_{lag}" for lag in cfg.lags]
+        + [f"lag_{lag}" for lag in cfg.lags]
         + [f"roll_mean_{w}" for w in cfg.rolls]
     )
     required = [cfg.target_col, cfg.time_col] + feature_cols

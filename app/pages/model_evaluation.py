@@ -16,20 +16,24 @@ def render():
 
     logger.info("Rendering model evaluation page")
 
-    metrics = pd.DataFrame({
-        "metric": ["MAE", "RMSE"],
-        "model": [10, 15],
-        "naive": [15, 20],
-    })
+    metrics = pd.DataFrame(
+        {
+            "metric": ["MAE", "RMSE"],
+            "model": [10, 15],
+            "naive": [15, 20],
+        }
+    )
 
     st.subheader("Metrics Comparison")
     st.dataframe(metrics)
 
-    data = pd.DataFrame({
-        "date": pd.date_range("2024-01-01", periods=30),
-        "actual": range(30),
-        "predicted": [x + 2 for x in range(30)],
-    })
+    data = pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-01", periods=30),
+            "actual": range(30),
+            "predicted": [x + 2 for x in range(30)],
+        }
+    )
 
     st.subheader("Model vs Actual")
     st.line_chart(data.set_index("date"))

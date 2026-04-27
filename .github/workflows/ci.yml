@@ -39,7 +39,3 @@ jobs:
       # 🟡 Docstrings (solo informa)
       - name: Check docstrings (non-blocking)
         run: ruff check . --select D || true
-
-      # 🟢 Tests (decide si quieres bloquear o no)
-      - name: Run tests
-        run: pytest

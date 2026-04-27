@@ -1,4 +1,3 @@
-
 # 📈 data-product-forecasting
 
 **Producto de Datos de Pronóstico de Demanda — AWS, MLOps y Data Engineering**
@@ -172,10 +171,25 @@ Clona el repositorio desde tu instancia EC2:
 ```bash
 git clone https://github.com/AntonioEJ/data-product-forecasting-a.git
 cd data-product-forecasting-a
-```
+# Exporta tus credenciales de Kaggle (reemplaza USER y KEY por tus valores)
+export KAGGLE_USERNAME=USER
+export KAGGLE_KEY=KEY
 
+```
 #### Ejecución con Docker (Pipeline por etapas)
 
+Antes de construir y ejecutar el contenedor, instala las dependencias en tu entorno local (opcional pero recomendado para pruebas y desarrollo):
+
+```bash
+pip install uv
+uv venv  # Crea el entorno virtual (recomendado)
+uv sync
+# Si prefieres instalar en el sistema global (no recomendado), usa:
+# uv pip install -r pyproject.toml --system
+
+# Ejecuta el pipeline ETL localmente (opcional)
+uv run python -m etl.etl --raw-dir data/raw --prep-dir data/prep --artifacts-dir artifacts
+```
 
 Construye y ejecuta el contenedor para el pipeline ETL y procesamiento batch (desde la raíz del proyecto):
 
@@ -207,4 +221,4 @@ docker run --rm \
 
 ---
 
-Para documentación técnica y diagramas, consulta la carpeta docs/.
+Para documentación técnica y diagramas, consulta la carpeta docs/

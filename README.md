@@ -221,4 +221,29 @@ docker run --rm \
 
 ---
 
+## 🧪 Validación de código
+
+Para asegurar la calidad y el formato del código, puedes ejecutar:
+
+```bash
+# Linting general
+ruff check .
+
+# Validar formato
+ruff format --check .
+
+# Revisar docstrings
+ruff check . --select D
+
+# Ejecutar pruebas
+pytest
+```
+
+> Nota: Tras crear el entorno virtual con `uv venv`, puedes activarlo manualmente con:
+> - Linux/Mac: `source .venv/bin/activate`
+> - Windows: `.venv\Scripts\activate`
+> Esto es opcional, ya que uv lo maneja internamente, pero puede ser útil para algunos usuarios.
+
+---
+
 Para documentación técnica y diagramas, consulta la carpeta docs/

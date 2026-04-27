@@ -182,10 +182,13 @@ Antes de construir y ejecutar el contenedor, instala las dependencias en tu ento
 
 ```bash
 pip install uv
+uv venv  # Crea el entorno virtual (recomendado)
 uv sync
+# Si prefieres instalar en el sistema global (no recomendado), usa:
+# uv pip install -r pyproject.toml --system
+
+# Ejecuta el pipeline ETL localmente (opcional)
 uv run python -m etl.etl --raw-dir data/raw --prep-dir data/prep --artifacts-dir artifacts
-
-
 ```
 
 Construye y ejecuta el contenedor para el pipeline ETL y procesamiento batch (desde la raíz del proyecto):

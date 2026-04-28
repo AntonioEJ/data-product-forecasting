@@ -119,8 +119,10 @@ def setup_logging(log_dir: Path) -> logging.LoggerAdapter:
     return logger_adapter
 
 
-# logger global (se inicializa en main)
-logger: logging.LoggerAdapter
+# Module-level logger; handlers are configured by setup_logging() called in main()
+logger: logging.LoggerAdapter = logging.LoggerAdapter(
+    logging.getLogger(__name__), {"hostname": socket.gethostname()}
+)
 
 
 # ----------------------------
@@ -474,10 +476,18 @@ def build_monthly_with_lags(
 # Main
 # ----------------------------
 def main() -> None:
-    """Ejecuta el pipeline ETL completo para la Tarea-03."""
-    # Checar el logger.
-    global logger
+    """Execute the full ETL pipeline.
 
+    Supports parametric paths via CLI arguments for SageMaker Processing Jobs
+    and Docker environments. Falls back to repository-relative defaults for
+    local execution.
+
+    Notes:
+        SageMaker Processing Jobs should pass:
+          --raw-dir /opt/ml/processing/input/raw
+          --prep-dir /opt/ml/processing/output
+          --artifacts-dir /opt/ml/processing/output/artifacts
+    """
     args = parse_args()
 
     repo_root = find_repo_root(Path(__file__))
@@ -488,16 +498,8 @@ def main() -> None:
         Path(args.artifacts_dir) if args.artifacts_dir else repo_root / "artifacts"
     )
 
-    logger = setup_logging(artifacts_dir / "logs")
-    logger.info("🚀 Iniciando ETL Tarea-03")
-
-    logger = setup_logging(repo_root / "artifacts" / "logs")
-
-    logger.info("🚀 Iniciando ETL Tarea-03")
-
-    raw_dir = repo_root / "data" / "raw"
-    prep_dir = repo_root / "data" / "prep"
-    artifacts_dir = repo_root / "artifacts"
+    _logger = setup_logging(artifacts_dir / "logs")
+    _logger.info("ETL pipeline starting")
 
     prep_dir.mkdir(parents=True, exist_ok=True)
     artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -539,7 +541,7 @@ def main() -> None:
     yearly_control = build_yearly_control(df)
     yearly_control_path = artifacts_dir / "yearly_control.csv"
     yearly_control.to_csv(yearly_control_path, index=False)
-    logger.info("Cifras Control anual guardado en %s", yearly_control_path)
+    _logger.info("Cifras Control anual guardado en %s", yearly_control_path)
 
     # 4) Monthly + lags (opción B + optimizado)
     items_lookup = df_dict["items"][["item_id", "item_name"]].drop_duplicates("item_id")
@@ -555,26 +557,26 @@ def main() -> None:
     try:
         df.to_parquet(df_out_parquet, index=False)
         monthly.to_parquet(monthly_out_parquet, index=False)
-        logger.info(
+        _logger.info(
             "Parquet guardado correctamente: %s y %s",
             df_out_parquet,
             monthly_out_parquet,
         )
     except Exception as e:
-        logger.warning("Parquet no disponible (%s). Guardando CSV.", e)
+        _logger.warning("Parquet no disponible (%s). Guardando CSV.", e)
         df.to_csv(df_out_csv, index=False)
         monthly.to_csv(monthly_out_csv, index=False)
-        logger.info("CSV guardado en %s y %s", df_out_csv, monthly_out_csv)
+        _logger.info("CSV guardado en %s y %s", df_out_csv, monthly_out_csv)
     else:
         df.to_csv(df_out_csv, index=False)
         monthly.to_csv(monthly_out_csv, index=False)
-        logger.info("CSV guardado en %s y %s", df_out_csv, monthly_out_csv)
+        _logger.info("CSV guardado en %s y %s", df_out_csv, monthly_out_csv)
 
     # Limpieza RAM
     del df, monthly
     gc.collect()
 
-    logger.info("✅ ETL finalizado correctamente")
+    _logger.info("ETL pipeline completed successfully")
 
 
 if __name__ == "__main__":

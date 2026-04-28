@@ -1,42 +1,54 @@
-"""
-RDS PostgreSQL connection and data access layer.
-"""
+"""RDS PostgreSQL connection and data access layer."""
+
+import logging
 import os
+from typing import Any
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from typing import Any, Dict, List, Optional
-import logging
 
 logger = logging.getLogger("data.rds")
 logger.setLevel(logging.INFO)
 
 DB_CONFIG = {
     "host": os.getenv("RDS_HOST", "localhost"),
-    "port": int(os.getenv("RDS_PORT", 5432)),
+    "port": int(os.getenv("RDS_PORT", "5432")),
     "dbname": os.getenv("RDS_DBNAME", "forecasting"),
     "user": os.getenv("RDS_USER", "postgres"),
-    "password": os.getenv("RDS_PASSWORD", "password"),
+    "password": os.getenv("RDS_PASSWORD", ""),
 }
 
-def get_connection():
-    """
-    Create a new database connection using environment variables or AWS Secrets Manager.
+
+def get_connection() -> psycopg2.extensions.connection:
+    """Create a new database connection from environment variables.
+
+    Connection parameters are read from RDS_HOST, RDS_PORT, RDS_DBNAME,
+    RDS_USER, and RDS_PASSWORD environment variables.
+
     Returns:
-        psycopg2 connection object
+        psycopg2 connection object.
+
     Raises:
-        psycopg2.Error: If connection fails
+        ValueError: If RDS_PASSWORD environment variable is not set.
+        psycopg2.OperationalError: If the connection cannot be established.
     """
+    if not os.getenv("RDS_PASSWORD"):
+        raise ValueError(
+            "RDS_PASSWORD environment variable is not set. "
+            "Configure it via environment variables or AWS Secrets Manager."
+        )
     try:
         conn = psycopg2.connect(**DB_CONFIG)
-        logger.info("Connected to RDS PostgreSQL.")
+        logger.info("Connected to RDS PostgreSQL at host=%s", DB_CONFIG["host"])
         return conn
-    except Exception as e:
-        logger.error(f"Failed to connect to RDS: {e}")
+    except psycopg2.OperationalError:
+        logger.exception("Failed to connect to RDS at host=%s", DB_CONFIG["host"])
         raise
 
-def fetch_query(query: str, params: Optional[tuple] = None) -> List[Dict[str, Any]]:
-    """
-    Execute a SELECT query and return results as a list of dicts.
+
+def fetch_query(query: str, params: tuple | None = None) -> list[dict[str, Any]]:
+    """Execute a SELECT query and return results as a list of dicts.
+
     Args:
         query: SQL SELECT statement
         params: Query parameters
@@ -49,12 +61,13 @@ def fetch_query(query: str, params: Optional[tuple] = None) -> List[Dict[str, An
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params)
             results = cur.fetchall()
-            logger.info(f"Query executed: {query}")
-            return results
+            logger.info("SELECT query executed successfully, rows=%d", len(results))
+            return list(results)
 
-def execute_query(query: str, params: Optional[tuple] = None) -> None:
-    """
-    Execute an INSERT/UPDATE/DELETE query.
+
+def execute_query(query: str, params: tuple | None = None) -> None:
+    """Execute an INSERT/UPDATE/DELETE query.
+
     Args:
         query: SQL statement
         params: Query parameters
@@ -65,4 +78,4 @@ def execute_query(query: str, params: Optional[tuple] = None) -> None:
         with conn.cursor() as cur:
             cur.execute(query, params)
             conn.commit()
-            logger.info(f"Query executed and committed: {query}")
+            logger.info("Write query executed and committed successfully")

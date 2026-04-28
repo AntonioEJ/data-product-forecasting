@@ -58,7 +58,7 @@ Kaggle / S3 (raw)
 - Credenciales gestionadas vía Secrets Manager y variables de entorno (nunca hardcodeadas).
 - Logging estructurado compatible con CloudWatch.
 
-## Stack tecnológico
+## 🛠️ Stack tecnológico
 
 | Categoría | Herramientas | Por qué |
 |---|---|---|
@@ -143,7 +143,7 @@ Kaggle / S3 (raw)
 └── uv.lock                     → Lockfile determinista
 ```
 
-## Cómo ejecutar
+## ⚙️ Cómo ejecutar
 
 ### Local
 
@@ -301,7 +301,7 @@ uv run ruff check .             # lint (E/F/I/B/C4/UP/D)
 uv run pytest -v                # tests
 ```
 
-## Prácticas implementadas
+## 📋 Prácticas implementadas
 
 - **PEP 8 estricto**: enforced por Ruff con reglas E, F, I, B, C4, UP, D (Google-style docstrings).
 - **Logging estructurado**: formato compatible con CloudWatch, timestamps UTC, hostname como contexto. Sin `print()`.

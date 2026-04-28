@@ -175,6 +175,97 @@ def upload_table(path: str, table: str, bucket: str) -> int:
     return row_count
 
 
+def _discover_files(data_dir: str) -> list[str]:
+    """Filtra la whitelist contra archivos existentes en disco.
+
+    Args:
+        data_dir: Directorio donde buscar los archivos.
+
+    Returns:
+        Lista ordenada de archivos encontrados.
+
+    Raises:
+        RuntimeError: Si el directorio no existe o no hay archivos.
+    """
+    if not os.path.isdir(data_dir):
+        raise RuntimeError(f"Directorio no encontrado: {data_dir}")
+
+    archivos = sorted(
+        f for f in SILVER_FILES if os.path.isfile(os.path.join(data_dir, f))
+    )
+    missing = sorted(set(SILVER_FILES) - set(archivos))
+    if missing:
+        logger.warning(
+            "Archivos no encontrados en %s: %s", data_dir, ", ".join(missing)
+        )
+    if not archivos:
+        raise RuntimeError(f"Ningún archivo de la whitelist encontrado en {data_dir}")
+    return archivos
+
+
+def _process_tables(
+    archivos: list[str], data_dir: str, bucket: str
+) -> tuple[list[str], list[str], int]:
+    """Itera sobre los archivos, sube cada tabla y acumula resultados.
+
+    Args:
+        archivos: Nombres de archivo a procesar.
+        data_dir: Directorio raíz de los archivos.
+        bucket: Nombre del bucket S3 destino.
+
+    Returns:
+        Tupla ``(tablas_ok, tablas_fail, total_filas)``.
+    """
+    tablas_ok: list[str] = []
+    tablas_fail: list[str] = []
+    total_filas = 0
+
+    for filename in archivos:
+        table = os.path.splitext(filename)[0].lower()
+        path = os.path.join(data_dir, filename)
+        t0 = time.time()
+        try:
+            validate_file(path)
+            rows = upload_table(path, table, bucket)
+            elapsed = time.time() - t0
+            logger.info("✓ %s — %d filas en %.1fs", table, rows, elapsed)
+            tablas_ok.append(table)
+            total_filas += rows
+        except Exception:  # pylint: disable=broad-exception-caught
+            elapsed = time.time() - t0
+            logger.exception("✗ %s — error en %.1fs", table, elapsed)
+            tablas_fail.append(table)
+
+    return tablas_ok, tablas_fail, total_filas
+
+
+def _log_summary(
+    tablas_ok: list[str],
+    tablas_fail: list[str],
+    total_filas: int,
+    total_archivos: int,
+    elapsed: float,
+) -> None:
+    """Imprime cifras de control del pipeline Silver.
+
+    Args:
+        tablas_ok: Tablas procesadas exitosamente.
+        tablas_fail: Tablas que fallaron.
+        total_filas: Filas totales subidas.
+        total_archivos: Archivos detectados inicialmente.
+        elapsed: Segundos transcurridos.
+    """
+    logger.info("=== Silver ETL — cifras de control ===")
+    logger.info("  Tablas procesadas : %d / %d", len(tablas_ok), total_archivos)
+    logger.info("  Tablas fallidas   : %d", len(tablas_fail))
+    if tablas_fail:
+        logger.info("  Detalle fallas    : %s", ", ".join(tablas_fail))
+    logger.info("  Filas totales     : %d", total_filas)
+    logger.info("  Tiempo total      : %.1fs", elapsed)
+    logger.info("  Tablas OK         : %s", ", ".join(tablas_ok))
+    logger.info("=== Silver ETL — fin ===")
+
+
 def main() -> None:
     """Descubre Parquets, valida, sube a S3 y registra en Glue.
 
@@ -194,25 +285,7 @@ def main() -> None:
     setup_logging(log_dir)
 
     try:
-        if not os.path.isdir(data_dir):
-            raise RuntimeError(f"Directorio no encontrado: {data_dir}")
-
-        archivos = sorted(
-            f for f in SILVER_FILES if os.path.isfile(os.path.join(data_dir, f))
-        )
-        missing = [
-            f for f in SILVER_FILES if not os.path.isfile(os.path.join(data_dir, f))
-        ]
-        if missing:
-            logger.warning(
-                "Archivos no encontrados en %s: %s",
-                data_dir,
-                ", ".join(missing),
-            )
-        if not archivos:
-            raise RuntimeError(
-                f"Ningún archivo de la whitelist encontrado en {data_dir}"
-            )
+        archivos = _discover_files(data_dir)
 
         logger.info("=== Silver ETL — inicio ===")
         logger.info(
@@ -226,44 +299,19 @@ def main() -> None:
         logger.info("Base de datos Glue '%s' lista.", GLUE_DATABASE)
 
         t_start = time.time()
-        tablas_ok: list[str] = []
-        tablas_fail: list[str] = []
-        total_filas = 0
-
-        for filename in archivos:
-            table = os.path.splitext(filename)[0].lower()
-            path = os.path.join(data_dir, filename)
-            t0 = time.time()
-            try:
-                validate_file(path)
-                rows = upload_table(path, table, args.bucket)
-                elapsed = time.time() - t0
-                logger.info("✓ %s — %d filas subidas en %.1fs", table, rows, elapsed)
-                tablas_ok.append(table)
-                total_filas += rows
-            except Exception:
-                elapsed = time.time() - t0
-                logger.exception("✗ %s — error al procesar en %.1fs", table, elapsed)
-                tablas_fail.append(table)
-
-        # Cifras de control finales
-        elapsed_total = time.time() - t_start
-        logger.info("=== Silver ETL — cifras de control ===")
-        logger.info("  Tablas procesadas : %d / %d", len(tablas_ok), len(archivos))
-        logger.info("  Tablas fallidas   : %d", len(tablas_fail))
-        if tablas_fail:
-            logger.info("  Detalle fallas    : %s", ", ".join(tablas_fail))
-        logger.info("  Filas totales     : %d", total_filas)
-        logger.info("  Tiempo total      : %.1fs", elapsed_total)
-        logger.info("  Tablas OK         : %s", ", ".join(tablas_ok))
-        logger.info("=== Silver ETL — fin ===")
+        tablas_ok, tablas_fail, total_filas = _process_tables(
+            archivos, data_dir, args.bucket
+        )
+        _log_summary(
+            tablas_ok, tablas_fail, total_filas, len(archivos), time.time() - t_start
+        )
 
         if tablas_fail:
             raise RuntimeError(
                 f"Silver ETL terminó con errores en: {', '.join(tablas_fail)}"
             )
 
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.exception("Error fatal en Silver ETL")
         sys.exit(1)
 

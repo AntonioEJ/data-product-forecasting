@@ -18,8 +18,7 @@ venv/
 # ----------------------------
 # Data & artifacts
 # ----------------------------
-data/
-artifacts/
+
 *.parquet
 *.csv
 

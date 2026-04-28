@@ -36,6 +36,7 @@ import pandas as pd
 
 GLUE_DATABASE: str = "forecasting_silver"
 S3_PREFIX_TEMPLATE: str = "s3://{bucket}/forecasting/silver/{table}/"
+CHUNK_SIZE: int = 500_000
 
 # Archivos a cargar en la capa Silver (whitelist explícita)
 SILVER_FILES: list[str] = [
@@ -98,9 +99,10 @@ def validate_dataframe(df: pd.DataFrame, table_name: str) -> None:
 
 
 def upload_table(path: str, table: str, bucket: str) -> int:
-    """Lee un Parquet y lo sube a S3 registrando en Glue.
+    """Lee un Parquet en chunks y lo sube a S3 registrando en Glue.
 
-    Libera memoria con ``del df`` + ``gc.collect()`` al finalizar.
+    Divide el archivo en lotes de ``CHUNK_SIZE`` filas para limitar el
+    consumo de memoria. Libera cada chunk con ``del`` + ``gc.collect()``.
 
     Args:
         path: Ruta local al archivo Parquet.
@@ -110,20 +112,30 @@ def upload_table(path: str, table: str, bucket: str) -> int:
     Returns:
         Total de filas procesadas.
     """
-    df = pd.read_parquet(path)
-    df.columns = df.columns.str.lower()
-    validate_dataframe(df, table)
-    row_count = len(df)
     s3_path = S3_PREFIX_TEMPLATE.format(bucket=bucket, table=table)
-    wr.s3.to_parquet(
-        df,
-        path=s3_path,
-        dataset=True,
-        mode="overwrite",
-        database=GLUE_DATABASE,
-        table=table,
-    )
-    del df
+    pf = pd.read_parquet(path)
+    pf.columns = pf.columns.str.lower()
+    total_rows = len(pf)
+    row_count = 0
+
+    for chunk_idx in range(0, total_rows, CHUNK_SIZE):
+        chunk = pf.iloc[chunk_idx : chunk_idx + CHUNK_SIZE].copy()
+        if chunk_idx == 0:
+            validate_dataframe(chunk, table)
+        mode = "overwrite" if chunk_idx == 0 else "append"
+        wr.s3.to_parquet(
+            chunk,
+            path=s3_path,
+            dataset=True,
+            mode=mode,
+            database=GLUE_DATABASE,
+            table=table,
+        )
+        row_count += len(chunk)
+        del chunk
+        gc.collect()
+
+    del pf
     gc.collect()
     return row_count
 
@@ -174,6 +186,9 @@ def main() -> None:
             data_dir,
             len(archivos),
         )
+
+        wr.catalog.create_database(name=GLUE_DATABASE, exist_ok=True)
+        logger.info("Base de datos Glue '%s' lista.", GLUE_DATABASE)
 
         t_start = time.time()
         tablas_ok: list[str] = []

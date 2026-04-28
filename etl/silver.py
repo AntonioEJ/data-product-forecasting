@@ -175,6 +175,9 @@ def main() -> None:
             len(archivos),
         )
 
+        wr.catalog.create_database(name=GLUE_DATABASE, exist_ok=True)
+        logger.info("Base de datos Glue '%s' lista.", GLUE_DATABASE)
+
         t_start = time.time()
         tablas_ok: list[str] = []
         tablas_fail: list[str] = []

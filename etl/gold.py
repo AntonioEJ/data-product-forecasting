@@ -109,6 +109,9 @@ def main() -> None:
             GOLD_TABLE,
         )
 
+        wr.catalog.create_database(name=GLUE_DATABASE_GOLD, exist_ok=True)
+        logger.info("Base de datos Glue '%s' lista.", GLUE_DATABASE_GOLD)
+
         # Idempotencia
         drop_table_if_exists(GLUE_DATABASE_GOLD, GOLD_TABLE, s3_path)
 

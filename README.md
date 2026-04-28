@@ -2,6 +2,11 @@
 
 Producto de datos de pronóstico de demanda construido sobre AWS con pipeline ETL reproducible, arquitectura medallion y frontend Streamlit.
 
+Este proyecto construye un producto de datos de pronóstico de demanda sobre el dataset
+[Predict Future Sales](https://www.kaggle.com/c/competitive-data-science-predict-future-sales)
+de Kaggle (~2.9M registros de ventas). Abarca ingestión, transformación, feature engineering,
+modelado y visualización.
+
 ## Autores
 
 - José Antonio Esparza
@@ -71,31 +76,71 @@ Kaggle / S3 (raw)
 ## Estructura del repositorio
 
 ```
-├── app/                → UI Streamlit (main.py + pages/)
-├── artifacts/          → Modelos, predicciones, logs del ETL
-├── config.py           → Rutas y parámetros centralizados (PathsConfig, ModelConfig)
+.
+├── app/                        → UI Streamlit
+│   ├── __init__.py
+│   ├── components/
+│   ├── main.py
+│   └── pages/
+│       ├── batch_export.py
+│       ├── business_feedback.py
+│       ├── forecast_exploration.py
+│       └── model_evaluation.py
+├── artifacts/                  → Outputs del ETL
+│   ├── logs/
+│   │   └── etl.log
+│   ├── models/
+│   ├── predictions/
+│   └── yearly_control.csv
+├── backend/                    
+├── config/                     
+├── config.py                   → Rutas y parámetros centralizados (PathsConfig, ModelConfig)
 ├── data/
-│   ├── raw/            → CSVs de Kaggle (no se commitean)
-│   ├── prep/           → Datasets preparados (parquet + csv)
-│   └── rds.py          → Capa de acceso a PostgreSQL
+│   ├── inference/
+│   ├── predictions/
+│   ├── prep/                   → Datasets preparados (parquet + csv)
+│   │   ├── df_base.csv
+│   │   ├── df_base.parquet
+│   │   ├── monthly_with_lags.csv
+│   │   └── monthly_with_lags.parquet
+│   ├── raw/                    → CSVs de Kaggle (no se commitean)
+│   │   ├── item_categories_en.csv
+│   │   ├── item_categories.csv
+│   │   ├── items_en.csv
+│   │   ├── items.csv
+│   │   ├── sales_train.csv
+│   │   ├── sample_submission.csv
+│   │   ├── shops_en.csv
+│   │   ├── shops.csv
+│   │   └── test.csv
+│   └── rds.py                  → Capa de acceso a PostgreSQL
+├── docs/
+│   ├── arquitectura.md
+│   ├── erd.md
+│   └── screenshots/
 ├── etl/
-│   ├── etl.py          → Pipeline ETL principal (descarga, limpieza, agregación)
-│   ├── bronze.py       → Ingesta CSV → S3/Glue
-│   ├── silver.py       → Datos limpios → S3/Glue
-│   ├── gold.py         → CTAS en Athena
-│   ├── features.py     → Feature engineering (lags, rolling means)
-│   ├── Dockerfile      → Imagen para ejecutar ETL en Docker/SageMaker
-│   └── test/           → Tests de validación de outputs
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── bronze.py               → Ingesta CSV → S3/Glue
+│   ├── Dockerfile              → Imagen para ejecutar ETL en Docker/SageMaker
+│   ├── etl.py                  → Pipeline ETL principal (descarga, limpieza, agregación)
+│   ├── features.py             → Feature engineering (lags, rolling means)
+│   ├── gold.py                 → CTAS en Athena
+│   ├── silver.py               → Datos limpios → S3/Glue
+│   └── test/
+│       └── test_prep.py        → Tests de validación de outputs
+├── frontend/                   → (pendiente)
+├── inference/                  → (pendiente)
 ├── infra/
-│   └── core.yaml       → CloudFormation stack
-├── models/             → Artefactos de ML
-├── notebooks/          → EDA y prototipos
-├── services/           → Lógica de negocio (pendiente)
+│   └── core.yaml               → CloudFormation stack
+├── models/                     → Artefactos de ML
+├── notebooks/                  → EDA y prototipos
+├── services/                   → Lógica de negocio (pendiente)
 ├── utils/
-│   └── logging.py      → Logging centralizado (CloudWatch-ready)
-├── Dockerfile          → Imagen principal (Streamlit app)
-├── pyproject.toml      → Dependencias, config de ruff y pytest
-└── uv.lock             → Lockfile determinista
+│   └── logging.py              → Logging centralizado (CloudWatch-ready)
+├── Dockerfile                  → Imagen principal (Streamlit app)
+├── pyproject.toml              → Dependencias, config de ruff y pytest
+└── uv.lock                     → Lockfile determinista
 ```
 
 ## Cómo ejecutar

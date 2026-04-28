@@ -33,10 +33,11 @@ import time
 
 import awswrangler as wr
 import pandas as pd
+import pyarrow.parquet as pq
 
 GLUE_DATABASE: str = "forecasting_silver"
 S3_PREFIX_TEMPLATE: str = "s3://{bucket}/forecasting/silver/{table}/"
-CHUNK_SIZE: int = 500_000
+CHUNK_SIZE: int = 1_000_000
 
 # Archivos a cargar en la capa Silver (whitelist explícita)
 SILVER_FILES: list[str] = [
@@ -99,10 +100,11 @@ def validate_dataframe(df: pd.DataFrame, table_name: str) -> None:
 
 
 def upload_table(path: str, table: str, bucket: str) -> int:
-    """Lee un Parquet en chunks y lo sube a S3 registrando en Glue.
+    """Lee un Parquet en streaming y lo sube a S3 registrando en Glue.
 
-    Divide el archivo en lotes de ``CHUNK_SIZE`` filas para limitar el
-    consumo de memoria. Libera cada chunk con ``del`` + ``gc.collect()``.
+    Usa ``pyarrow.parquet.ParquetFile.iter_batches`` para leer el archivo
+    sin cargarlo completo en memoria. Cada lote se convierte a pandas,
+    se sube a S3 y se libera de inmediato.
 
     Args:
         path: Ruta local al archivo Parquet.
@@ -113,13 +115,12 @@ def upload_table(path: str, table: str, bucket: str) -> int:
         Total de filas procesadas.
     """
     s3_path = S3_PREFIX_TEMPLATE.format(bucket=bucket, table=table)
-    pf = pd.read_parquet(path)
-    pf.columns = pf.columns.str.lower()
-    total_rows = len(pf)
+    parquet_file = pq.ParquetFile(path)
     row_count = 0
 
-    for chunk_idx in range(0, total_rows, CHUNK_SIZE):
-        chunk = pf.iloc[chunk_idx : chunk_idx + CHUNK_SIZE].copy()
+    for chunk_idx, batch in enumerate(parquet_file.iter_batches(batch_size=CHUNK_SIZE)):
+        chunk = batch.to_pandas()
+        chunk.columns = chunk.columns.str.lower()
         if chunk_idx == 0:
             validate_dataframe(chunk, table)
         mode = "overwrite" if chunk_idx == 0 else "append"
@@ -132,11 +133,9 @@ def upload_table(path: str, table: str, bucket: str) -> int:
             table=table,
         )
         row_count += len(chunk)
-        del chunk
+        del chunk, batch
         gc.collect()
 
-    del pf
-    gc.collect()
     return row_count
 
 

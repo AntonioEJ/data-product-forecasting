@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1.4
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
@@ -21,8 +20,8 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY uv.lock .
 
-# Install uv and project dependencies
-RUN pip install --upgrade pip && pip install uv && uv pip install --system --no-cache-dir
+# Install uv and project dependencies with locked versions
+RUN pip install --upgrade pip && pip install uv && uv sync --frozen --no-dev
 
 # Copy the rest of the code
 COPY . .

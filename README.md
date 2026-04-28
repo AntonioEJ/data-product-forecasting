@@ -1,249 +1,324 @@
-# 📈 data-product-forecasting
+# data-product-forecasting
 
-**Producto de Datos de Pronóstico de Demanda — AWS, MLOps y Data Engineering**
+Producto de datos de pronóstico de demanda construido sobre AWS con pipeline ETL reproducible, arquitectura medallion y frontend Streamlit.
 
----
+Este proyecto construye un producto de datos de pronóstico de demanda sobre el dataset
+[Predict Future Sales](https://www.kaggle.com/c/competitive-data-science-predict-future-sales)
+de Kaggle (~2.9M registros de ventas). Abarca ingestión, transformación, feature engineering,
+modelado y visualización.
 
-## 👥 Autores
+## Autores
 
 - José Antonio Esparza
 - Gustavo Pardo
 
----
+## Qué resuelve
 
-## 📋 Descripción General
+Este proyecto implementa un pipeline end-to-end de forecasting de ventas orientado a usuarios de negocio (Finanzas, Planeación, BI). Descarga datos de competencias de Kaggle, los transforma a través de capas medallion (bronze → silver → gold), genera features para modelos de ML y expone los resultados a través de una aplicación Streamlit conectada a RDS.
 
-Este proyecto implementa un producto de datos de pronóstico de demanda, desplegado en AWS y orientado a usuarios de negocio (Finanzas, Planeación, BI). Expone pronósticos de ventas mediante una aplicación web Streamlit, soportando consultas interactivas y flujos batch, con arquitectura y prácticas de ingeniería profesional.
+No es un notebook exploratorio. Es un producto de datos diseñado para ejecutarse de forma reproducible en local, Docker o SageMaker Processing Jobs.
 
----
+## Arquitectura
 
-## 🏗️ Arquitectura del Proyecto
-
-### Diagrama General
+### Flujo de datos
 
 ```
-┌────────────────────────────┐
-│  Descarga data en S3 (Raw) │
-└─────────────┬─────────────┘
-              │
-       ┌──────▼──────┐
-       │   ETL/Glue  │
-       └──────┬──────┘
-              │
-       ┌──────▼──────┐
-       │   S3 Proc.  │
-       └──────┬──────┘
-              │
-       ┌──────▼──────┐
-       │   ML Batch  │
-       └──────┬──────┘
-              │
-       ┌──────▼──────┐
-       │    RDS      │
-       └──────┬──────┘
-              │
-       ┌──────▼──────┐
-       │ Streamlit   │
-       └──────┬──────┘
-              │
-       ┌──────▼──────┐
-       │  Usuario    │
-       └─────────────┘
+Kaggle / S3 (raw)
+       │
+       ▼
+   ETL local / Docker / SageMaker
+       │
+       ├── Bronze (CSV → Parquet en S3, registro en Glue)
+       ├── Silver (datos limpios y preparados)
+       └── Gold  (tabla analítica vía Athena CTAS)
+       │
+       ▼
+   Feature Engineering
+       │
+       ▼
+   Modelo (LightGBM) → predicciones batch
+       │
+       ▼
+   RDS PostgreSQL (predicciones precomputadas)
+       │
+       ▼
+   Streamlit (consulta interactiva + exportación batch)
 ```
 
-**Servicios AWS:**
-- S3 (data lake), Glue Data Catalog, RDS (PostgreSQL), ECS Fargate, ECR, CloudFormation, Secrets Manager, (opcional: SageMaker)
+### Capas medallion
 
-**Decisiones clave:**
-- Predicciones precomputadas (batch) en RDS para baja latencia.
+- **Bronze**: ingesta directa de archivos CSV desde `data/raw/` hacia S3 en formato Parquet. Registro automático en Glue Data Catalog.
+- **Silver**: datos limpios y preparados desde `data/prep/`. Misma mecánica de subida a S3 y registro en Glue.
+- **Gold**: tabla analítica construida mediante CTAS en Athena a partir de las capas anteriores.
+
+### Decisiones de diseño
+
+- Predicciones precomputadas (batch) almacenadas en RDS para baja latencia en consultas.
 - Exportaciones batch a S3 con URL firmada.
-- Manejo seguro de credenciales con Secrets Manager.
+- Credenciales gestionadas vía Secrets Manager y variables de entorno (nunca hardcodeadas).
 - Logging estructurado compatible con CloudWatch.
 
----
+## 🛠️ Stack tecnológico
 
-data/           → Acceso a datos (RDS, S3)
+| Categoría | Herramientas | Por qué |
+|---|---|---|
+| Lenguaje | Python 3.11+ | Ecosistema maduro para data/ML |
+| Gestión de deps | uv + lockfile | Instalaciones deterministas y rápidas |
+| Linting/formato | Ruff | PEP 8, imports, docstrings, bugbear — un solo tool |
+| Frontend | Streamlit | Prototipos rápidos para usuarios de negocio |
+| Cloud | AWS (S3, Glue, Athena, RDS, ECS, ECR, Secrets Manager) | Stack enterprise estándar |
+| ML | LightGBM, scikit-learn | Modelos de gradient boosting para series de tiempo |
+| ETL | pandas, pyarrow, awswrangler | Lectura/escritura eficiente a S3/Glue |
+| Contenedores | Docker | Reproducibilidad entre local y cloud |
+| IaC | CloudFormation | Infraestructura versionada |
+| CI | GitHub Actions | Lint + format + score en cada PR |
 
-## 📁 Estructura del Proyecto
-```bash
+## Estructura del repositorio
+
+```
 .
-├── app           → UI Streamlit
-│   ├── __init__.py
-│   ├── components
-│   ├── main.py
-│   └── pages
-│       ├── batch_export.py
-│       ├── business_feedback.py
-│       ├── forecast_exploration.py
-│       └── model_evaluation.py
-├── artifacts     → Artefactos de modelos y predicciones
-│   ├── models
-│   └── predictions
-├── config        → Configuración general
-├── data          → Datos crudos, procesados y resultados
-│   ├── inference
-│   ├── predictions
-│   ├── prep
-│   ├── raw
-│   └── rds.py
-├── Dockerfile    → Imagen principal del proyecto
-├── docs          → Documentación, diagramas, reporte
-│   ├── arquitectura.md
-│   ├── erd.md
-│   ├── Modelo_de_Datos.png
-│   └── screenshots
-├── etl           → ETL y procesamiento batch
-│   ├── __init__.py
-│   ├── __main__.py
-│   ├── Dockerfile
-│   ├── etl.py
-│   ├── features.py
-│   └── test
-│       └── test_prep.py
-├── infra         → Infraestructura como código (CloudFormation)
-│   └── core.yaml
-├── models        → Lógica y artefactos de ML
-├── notebooks     → EDA y prototipos
-├── pyproject.toml
-├── README.md
-├── services      → Lógica de negocio
-└── utils         → Utilidades compartidas
-      └── logging.py
+├── app/                        → UI Streamlit
+│   ├── __init__.py
+│   ├── components/
+│   ├── main.py
+│   └── pages/
+│       ├── batch_export.py
+│       ├── business_feedback.py
+│       ├── forecast_exploration.py
+│       └── model_evaluation.py
+├── artifacts/                  → Outputs del ETL
+│   ├── logs/
+│   │   └── etl.log
+│   ├── models/
+│   ├── predictions/
+│   └── yearly_control.csv
+├── backend/                    
+├── config/                     
+├── config.py                   → Rutas y parámetros centralizados (PathsConfig, ModelConfig)
+├── data/
+│   ├── inference/
+│   ├── predictions/
+│   ├── prep/                   → Datasets preparados (parquet + csv)
+│   │   ├── df_base.csv
+│   │   ├── df_base.parquet
+│   │   ├── monthly_with_lags.csv
+│   │   └── monthly_with_lags.parquet
+│   ├── raw/                    → CSVs de Kaggle (no se commitean)
+│   │   ├── item_categories_en.csv
+│   │   ├── item_categories.csv
+│   │   ├── items_en.csv
+│   │   ├── items.csv
+│   │   ├── sales_train.csv
+│   │   ├── sample_submission.csv
+│   │   ├── shops_en.csv
+│   │   ├── shops.csv
+│   │   └── test.csv
+│   └── rds.py                  → Capa de acceso a PostgreSQL
+├── docs/
+│   ├── arquitectura.md
+│   ├── erd.md
+│   └── screenshots/
+├── etl/
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── bronze.py               → Ingesta CSV → S3/Glue
+│   ├── Dockerfile              → Imagen para ejecutar ETL en Docker/SageMaker
+│   ├── etl.py                  → Pipeline ETL principal (descarga, limpieza, agregación)
+│   ├── features.py             → Feature engineering (lags, rolling means)
+│   ├── gold.py                 → CTAS en Athena
+│   ├── silver.py               → Datos limpios → S3/Glue
+│   └── test/
+│       └── test_prep.py        → Tests de validación de outputs
+├── frontend/                   → (pendiente)
+├── inference/                  → (pendiente)
+├── infra/
+│   └── core.yaml               → CloudFormation stack
+├── models/                     → Artefactos de ML
+├── notebooks/                  → EDA y prototipos
+├── services/                   → Lógica de negocio (pendiente)
+├── utils/
+│   └── logging.py              → Logging centralizado (CloudWatch-ready)
+├── Dockerfile                  → Imagen principal (Streamlit app)
+├── pyproject.toml              → Dependencias, config de ruff y pytest
+└── uv.lock                     → Lockfile determinista
 ```
 
----
+## ⚙️ Cómo ejecutar
 
-## 🛠️ Tecnologías Utilizadas
-
-| Categoría         | Herramientas |
-|-------------------|--------------|
-| Lenguaje          | Python 3.11+ |
-| Web/App           | Streamlit    |
-| Cloud             | AWS (S3, Glue, RDS, ECS, ECR, CloudFormation, Secrets Manager) |
-| ML/ETL            | pandas, numpy, scikit-learn, boto3, sqlalchemy, psycopg2-binary |
-| Infraestructura   | Docker, CloudFormation, uv, ruff |
-| Logging           | logging (CloudWatch ready) |
-| Linting/Testing   | ruff, pytest |
-
----
-
-## ✅ Buenas Prácticas Implementadas
-
-| Práctica                | Implementación |
-|-------------------------|----------------|
-| Modularidad             | Separación app, servicios, datos, modelos, utils |
-| Logging estructurado    | logging con formato, niveles y timestamps |
-| Manejo de errores       | try/except, logs claros, sin fallos silenciosos |
-| Docstrings profesionales| Google/NumPy style en todas las funciones |
-| Linting y formato       | ruff (PEP8, imports, unused code) |
-| Reproducibilidad        | uv + lockfile, pyproject.toml |
-| Configuración segura    | Secrets Manager, variables de entorno |
-| Infraestructura como código | CloudFormation para todos los recursos |
-
----
-
-## 🚀 Ejecución Completa
-
-### Prerrequisitos
-
-1. AWS CLI configurado y permisos para crear recursos.
-2. Dependencias instaladas:
+### Local
 
 ```bash
+git clone https://github.com/AntonioEJ/data-product-forecasting.git
+cd data-product-forecasting
+
+# Instalar dependencias (incluye dev: ruff, pytest)
+pip install uv
 uv sync --all-extras
+
+# Configurar credenciales de Kaggle
+export KAGGLE_USERNAME=<tu-usuario>
+export KAGGLE_KEY=<tu-key>
+
+# Ejecutar ETL
+uv run python -m etl.etl --raw-dir data/raw --prep-dir data/prep --artifacts-dir artifacts
+
+# Lanzar Streamlit
+uv run streamlit run app/main.py
 ```
 
-### Despliegue de Infraestructura
+### Docker
+
+```bash
+# ETL
+docker build -t etl-pipeline:latest -f etl/Dockerfile .
+docker run --rm \
+    -v "$PWD/data:/app/data" \
+    -v "$PWD/artifacts:/app/artifacts" \
+    -e KAGGLE_USERNAME \
+    -e KAGGLE_KEY \
+    etl-pipeline:latest
+
+# Streamlit
+docker build -t forecasting-app:latest .
+docker run --rm -p 8501:8501 forecasting-app:latest
+```
+
+### SageMaker Studio 
+
+El proyecto se clona y ejecuta directamente en SageMaker Studio o una instancia de notebook.
+La estructura en SageMaker queda en `~/data-product-forecasting` con las mismas carpetas que el repo.
+
+```bash
+# Desde la terminal de SageMaker Studio
+cd ~/data-product-forecasting
+
+# Instalar uv si no está disponible
+pip install uv
+
+# Instalar dependencias
+uv sync --all-extras
+
+# Configurar credenciales de Kaggle
+export KAGGLE_USERNAME=<tu-usuario>
+export KAGGLE_KEY=<tu-key>
+
+# Ejecutar ETL (usa las rutas por defecto del repo)
+uv run python -m etl.etl
+
+# O con rutas explícitas (misma estructura que el tree del repo)
+uv run python -m etl.etl \
+    --raw-dir data/raw \
+    --prep-dir data/prep \
+    --artifacts-dir artifacts
+```
+
+Outputs generados tras ejecutar el ETL en SageMaker:
+
+```
+data/
+├── prep/
+│   ├── df_base.csv
+│   ├── df_base.parquet
+│   ├── monthly_with_lags.csv
+│   └── monthly_with_lags.parquet
+artifacts/
+├── logs/
+│   └── etl.log
+└── yearly_control.csv
+```
+
+> **Nota**: en SageMaker no se necesita Docker. El ETL corre directamente con `uv run`.
+> Los logs se escriben en `artifacts/logs/etl.log` y también en stdout (visible en CloudWatch).
+
+## Pipeline Medallion (Bronze / Silver / Gold)
+
+Después de ejecutar el ETL principal (`etl.etl`), los scripts medallion suben los datos procesados a S3 y los registran en AWS Glue Data Catalog.
+
+### Bronze — `etl/bronze.py`
+
+```bash
+python etl/bronze.py --bucket <tu-bucket>
+```
+
+- Lee todos los archivos `.csv` de `data/raw/` (sales_train, items_en, shops_en, etc.).
+- Convierte cada archivo a Parquet y lo sube a `s3://<bucket>/forecasting/bronze/<tabla>/`.
+- Registra cada tabla en Glue Data Catalog bajo la base de datos `forecasting_bronze`.
+- Validación: verifica que cada CSV tenga al menos una fila antes de subir.
+- Al final, confirma que todos los archivos existen en S3.
+
+### Silver — `etl/silver.py`
+
+```bash
+python etl/silver.py --bucket <tu-bucket>
+```
+
+- Lee todos los archivos `.parquet` de `data/prep/` (df_base, monthly_with_lags).
+- Sube cada archivo a `s3://<bucket>/forecasting/silver/<tabla>/`.
+- Registra cada tabla en Glue Data Catalog bajo la base de datos `forecasting_silver`.
+- Validación: confirma existencia de cada archivo en S3 al terminar.
+
+### Gold — `etl/gold.py`
+
+```bash
+python etl/gold.py --bucket <tu-bucket>
+```
+
+- Ejecuta una consulta CTAS en Athena para crear la tabla analítica `forecasting_gold.ventas_analitica`.
+- Combina datos de las capas Bronze/Silver en una vista consolidada para consumo por modelos y dashboards.
+- Resultado almacenado en `s3://<bucket>/forecasting/gold/`.
+
+### Orden de ejecución
+
+```bash
+# 1. ETL principal (descarga, limpieza, feature engineering)
+uv run python -m etl.etl
+
+# 2. Bronze (raw → S3/Glue)
+python etl/bronze.py --bucket <tu-bucket>
+
+# 3. Silver (prep → S3/Glue)
+python etl/silver.py --bucket <tu-bucket>
+
+# 4. Gold (Athena CTAS)
+python etl/gold.py --bucket <tu-bucket>
+```
+
+### Infraestructura (CloudFormation)
 
 ```bash
 aws cloudformation deploy \
-  --template-file infra/core.yaml \
-  --stack-name forecasting-stack \
-  --parameter-overrides DBUser=<usuario> DBPassword=<password> \
-  --capabilities CAPABILITY_NAMED_IAM
+    --template-file infra/core.yaml \
+    --stack-name forecasting-stack \
+    --parameter-overrides DBUser=<usuario> DBPassword=<password> \
+    --capabilities CAPABILITY_NAMED_IAM
 ```
 
-
-### Instalación del ambiente y ejecución por etapas
-
-Clona el repositorio desde tu instancia EC2:
+## Validación de código
 
 ```bash
-git clone https://github.com/AntonioEJ/data-product-forecasting-a.git
-cd data-product-forecasting-a
-# Exporta tus credenciales de Kaggle (reemplaza USER y KEY por tus valores)
-export KAGGLE_USERNAME=USER
-export KAGGLE_KEY=KEY
-
-```
-#### Ejecución con Docker (Pipeline por etapas)
-
-Antes de construir y ejecutar el contenedor, instala las dependencias en tu entorno local (opcional pero recomendado para pruebas y desarrollo):
-
-```bash
-pip install uv
-uv venv  # Crea el entorno virtual (recomendado)
-uv sync
-# Si prefieres instalar en el sistema global (no recomendado), usa:
-# uv pip install -r pyproject.toml --system
-
-# Ejecuta el pipeline ETL localmente (opcional)
-uv run python -m etl.etl --raw-dir data/raw --prep-dir data/prep --artifacts-dir artifacts
+uv run ruff format --check .    # formato
+uv run ruff check .             # lint (E/F/I/B/C4/UP/D)
+uv run pytest -v                # tests
 ```
 
-Construye y ejecuta el contenedor para el pipeline ETL y procesamiento batch (desde la raíz del proyecto):
+## 📋 Prácticas implementadas
 
-```bash
-# ETL y Feature Engineering
-docker build -t etl-pipeline:latest -f etl/Dockerfile .
-docker run --rm \
-       -v "$PWD/data:/app/data" \
-       -v "$PWD/artifacts:/app/artifacts" \
-       etl-pipeline:latest
-```
+- **PEP 8 estricto**: enforced por Ruff con reglas E, F, I, B, C4, UP, D (Google-style docstrings).
+- **Logging estructurado**: formato compatible con CloudWatch, timestamps UTC, hostname como contexto. Sin `print()`.
+- **Modularidad del ETL**: descarga, limpieza, feature engineering y persistencia en funciones separadas.
+- **Reproducibilidad**: `uv.lock` + `pyproject.toml` + `--frozen` en Docker y CI. Sin instalaciones ad-hoc.
+- **Seguridad**: credenciales vía env vars o Secrets Manager. Sin passwords en código. Queries parametrizadas en RDS.
+- **Rutas parametrizables**: `--raw-dir`, `--prep-dir`, `--artifacts-dir` permiten ejecutar en local, Docker y SageMaker sin cambiar código.
+- **CI automatizado**: GitHub Actions con format check, lint, ruff score y resumen por PR.
 
-Notas:
-- El Dockerfile de ETL está en etl/Dockerfile y espera el contexto de build en la raíz del proyecto.
-- El WORKDIR dentro del contenedor es /app y el PYTHONPATH está configurado como /app/etl.
-- El ENTRYPOINT ejecuta el pipeline ETL (etl/etl.py) automáticamente.
-- Si usas otros Dockerfile para etapas como entrenamiento o inferencia, repite el patrón cambiando la ruta y el ENTRYPOINT según corresponda.
+## Mejoras pendientes
 
-Si implementas etapas adicionales (entrenamiento, inferencia), crea los Dockerfile correspondientes en las carpetas models/ o services/ y repite el patrón:
+- Conectar páginas de Streamlit a RDS (actualmente usan datos mock).
+- Agregar polling de resultado en `gold.py` (Athena CTAS es asíncrono).
+- Extraer lógica compartida entre `bronze.py` y `silver.py` para eliminar duplicación.
+- Implementar training pipeline con tracking de experimentos.
+- Agregar tests de integración para las capas S3/Glue.
 
-```bash
-# Ejemplo para entrenamiento (si existe Dockerfile en models/)
-docker build -t ml-training:latest -f models/Dockerfile .
-docker run --rm \
-       -v "$PWD/data:/app/data" \
-       -v "$PWD/artifacts:/app/artifacts" \
-       ml-training:latest
-```
+## Documentación adicional
 
----
-
-## 🧪 Validación de código
-
-Para asegurar la calidad y el formato del código, puedes ejecutar:
-
-```bash
-# Linting general
-ruff check .
-
-# Validar formato
-ruff format --check .
-
-# Revisar docstrings
-ruff check . --select D
-
-# Ejecutar pruebas
-pytest
-```
-
-> Nota: Tras crear el entorno virtual con `uv venv`, puedes activarlo manualmente con:
-> - Linux/Mac: `source .venv/bin/activate`
-> - Windows: `.venv\Scripts\activate`
-> Esto es opcional, ya que uv lo maneja internamente, pero puede ser útil para algunos usuarios.
-
----
-
-Para documentación técnica y diagramas, consulta la carpeta docs/
+Diagramas de arquitectura y modelo de datos en `docs/`.

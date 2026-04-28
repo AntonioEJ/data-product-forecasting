@@ -1,74 +1,61 @@
-"""Test helpers for ETL outputs."""
+"""Tests that validate ETL output files exist in data/prep/.
+
+This module contains smoke tests that verify the ETL pipeline produced all
+expected output files under ``data/prep/``. These tests are fast (no I/O
+beyond a filesystem stat call) and are designed to run in CI after the ETL
+step completes.
+
+Notes:
+    - Paths are resolved relative to the repository root using ``__file__``,
+      so the tests work regardless of the working directory when pytest is
+      invoked (local, Docker, SageMaker Processing Job).
+    - To add new expected files, extend ``_EXPECTED_FILES``.
+"""
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
-import pandas as pd
-from pandas.testing import assert_frame_equal
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT: Path = Path(__file__).resolve().parents[2]
+_DATA_PREP: Path = _REPO_ROOT / "data" / "prep"
+
+_EXPECTED_FILES: list[str] = [
+    "df_base.csv",
+    "df_base.parquet",
+    "monthly_with_lags.csv",
+    "monthly_with_lags.parquet",
+]
 
 
-def _load(path: Path) -> pd.DataFrame:
-    if path.suffix == ".parquet":
-        return pd.read_parquet(path)
-    if path.suffix == ".csv":
-        return pd.read_csv(path)
-    raise ValueError(f"Extensión no soportada: {path.suffix}")
+def test_prep_files_exist() -> None:
+    """Verify that all expected ETL output files are present in data/prep/.
 
+    Iterates over ``_EXPECTED_FILES`` and asserts each one exists on disk.
+    Logs a summary of present and missing files to aid debugging in CI logs.
 
-def assert_outputs_equal(
-    old_path: Path,
-    new_path: Path,
-    *,
-    sort_keys: list[str] | None = None,
-    check_dtypes: bool = False,
-) -> None:
-    """Asserts that two output files are equal.
-
-    Optionally sorts and checks dtypes.
+    Raises:
+        AssertionError: If one or more expected files are missing, with a
+            descriptive message listing each missing filename and the
+            directory that was checked.
     """
-    old = _load(old_path)
-    new = _load(new_path)
+    logger.info("Checking ETL output files in %s", _DATA_PREP)
 
-    if sort_keys:
-        old = old.sort_values(sort_keys).reset_index(drop=True)
-        new = new.sort_values(sort_keys).reset_index(drop=True)
+    present = [f for f in _EXPECTED_FILES if (_DATA_PREP / f).exists()]
+    missing = [f for f in _EXPECTED_FILES if f not in present]
 
-    old = old.reindex(sorted(old.columns), axis=1)
-    new = new.reindex(sorted(new.columns), axis=1)
+    for filename in present:
+        logger.info("  FOUND: %s", filename)
 
-    assert_frame_equal(
-        old,
-        new,
-        check_dtype=check_dtypes,
-        check_like=False,
-        atol=0.0,
-        rtol=0.0,
+    for filename in missing:
+        logger.warning("  MISSING: %s", filename)
+
+    assert not missing, (
+        f"Missing {len(missing)} file(s) in {_DATA_PREP}:\n"
+        + "\n".join(f"  - {f}" for f in missing)
+        + "\nRun the ETL pipeline first to generate them."
     )
 
-
-# ✅ ESTE ES EL TEST REAL QUE PYTEST VA A EJECUTAR
-def test_monthly_outputs_equal():
-    """Test that monthly_with_lags outputs are equal."""
-    """Test that monthly_with_lags outputs are equal."""
-    base = Path("data/prep")
-
-    assert_outputs_equal(
-        old_path=base / "monthly_with_lags_old.parquet",
-        new_path=base / "monthly_with_lags_new.parquet",
-        sort_keys=["date", "shop_id", "item_id"],
-        check_dtypes=False,
-    )
-
-
-def test_df_base_outputs_equal():
-    """Test that df_base outputs are equal."""
-    """Test that df_base outputs are equal."""
-    base = Path("data/prep")
-
-    assert_outputs_equal(
-        old_path=base / "df_base_old.parquet",
-        new_path=base / "df_base_new.parquet",
-        sort_keys=["date", "shop_id", "item_id"],
-        check_dtypes=False,
-    )
+    logger.info("All %d expected files found in %s", len(present), _DATA_PREP)

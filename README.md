@@ -202,14 +202,8 @@ uv sync --all-extras
 export KAGGLE_USERNAME=<tu-usuario>
 export KAGGLE_KEY=<tu-key>
 
-# Ejecutar ETL (usa las rutas por defecto del repo)
 uv run python -m etl.etl
 
-# O con rutas explícitas (misma estructura que el tree del repo)
-uv run python -m etl.etl \
-    --raw-dir data/raw \
-    --prep-dir data/prep \
-    --artifacts-dir artifacts
 ```
 
 Outputs generados tras ejecutar el ETL en SageMaker:
@@ -282,6 +276,20 @@ python etl/silver.py --bucket <tu-bucket>
 # 4. Gold (Athena CTAS)
 python etl/gold.py --bucket <tu-bucket>
 ```
+
+### Buenas Prácticas del Pipeline ETL
+
+| Práctica | Implementación |
+|---|---|
+| **Idempotencia** | Bronze: `overwrite` en chunk 0 + `append` en siguientes. Silver: `overwrite` por archivo. Gold: `delete_table_if_exists` + limpieza S3 antes del CTAS. |
+| **Memory-safe** | Bronze: chunks de 500K filas + `del chunk` + `gc.collect()`. Silver: lectura file-by-file + `del df` + `gc.collect()`. Gold: Athena ejecuta el CTAS sin carga en RAM. |
+| **Logging profesional** | Módulo `logging` con handlers a consola y archivo (`artifacts/logs/{capa}_etl.log`). Timestamps por fase, inicio y fin delimitados, cifras de control al final. |
+| **Manejo de errores** | `try/except` en `main()` con `logger.exception()` + `sys.exit(1)`. Sin fallos silenciosos. |
+| **Docstrings** | Todas las funciones documentadas con Google style: descripción, `Args`, `Returns` y `Raises`. |
+| **Modularidad** | Patrón `validate_file` → `upload_table` → `main` en cada script. Funciones con responsabilidad única. |
+| **Cifras de control** | Cada script imprime al final: tablas procesadas, filas totales, tiempo por tabla y tiempo total. |
+| **CLI** | `argparse` con `--bucket` (y `--data-dir` en Bronze). Documentación disponible con `--help`. |
+| **Pylint** | Bronze: 9.77/10 · Silver: 9.75/10 · Gold: 9.64/10 |
 
 ### Infraestructura (CloudFormation)
 

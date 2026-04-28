@@ -93,18 +93,25 @@ def validate_dataframe(df: pd.DataFrame, table_name: str) -> None:
         table_name: Nombre lógico de la tabla (para logs).
 
     Raises:
-        AssertionError: Si el DataFrame está vacío.
+        ValueError: Si el DataFrame está vacío.
     """
-    assert not df.empty, f"DataFrame para '{table_name}' está vacío"
+    if df.empty:
+        raise ValueError(f"DataFrame para '{table_name}' está vacío")
     logger.info("✓ %s — validación básica OK (%d filas)", table_name, len(df))
 
 
 def upload_table(path: str, table: str, bucket: str) -> int:
-    """Lee un Parquet en streaming y lo sube a S3 registrando en Glue.
+    """Lee un Parquet y lo sube a S3 registrando en Glue.
 
-    Usa ``pyarrow.parquet.ParquetFile.iter_batches`` para leer el archivo
-    sin cargarlo completo en memoria. Cada lote se convierte a pandas,
-    se sube a S3 y se libera de inmediato.
+    Consulta los metadatos del archivo para elegir la ruta más eficiente:
+
+    * **Archivo pequeño** (≤ ``CHUNK_SIZE`` filas): lectura completa y una
+      sola subida a S3, minimizando llamadas de red.
+    * **Archivo grande** (> ``CHUNK_SIZE``): lectura en streaming con
+      ``pyarrow.parquet.ParquetFile.iter_batches`` para limitar la RAM.
+
+    Usa ``self_destruct=True`` al convertir Arrow → pandas para liberar
+    los buffers de Arrow de inmediato.
 
     Args:
         path: Ruta local al archivo Parquet.
@@ -115,11 +122,40 @@ def upload_table(path: str, table: str, bucket: str) -> int:
         Total de filas procesadas.
     """
     s3_path = S3_PREFIX_TEMPLATE.format(bucket=bucket, table=table)
+    meta = pq.read_metadata(path)
+    total_rows = meta.num_rows
+    logger.info(
+        "%s — %d filas detectadas (%d row-groups)",
+        table,
+        total_rows,
+        meta.num_row_groups,
+    )
+
+    # ── Ruta rápida: archivo cabe en un solo lote ──
+    if total_rows <= CHUNK_SIZE:
+        arrow_table = pq.read_table(path)
+        df = arrow_table.to_pandas(self_destruct=True)
+        del arrow_table
+        df.columns = df.columns.str.lower()
+        validate_dataframe(df, table)
+        wr.s3.to_parquet(
+            df,
+            path=s3_path,
+            dataset=True,
+            mode="overwrite",
+            database=GLUE_DATABASE,
+            table=table,
+        )
+        row_count = len(df)
+        del df
+        gc.collect()
+        return row_count
+
+    # ── Ruta en streaming: archivos grandes ──
     parquet_file = pq.ParquetFile(path)
     row_count = 0
-
     for chunk_idx, batch in enumerate(parquet_file.iter_batches(batch_size=CHUNK_SIZE)):
-        chunk = batch.to_pandas()
+        chunk = batch.to_pandas(self_destruct=True)
         chunk.columns = chunk.columns.str.lower()
         if chunk_idx == 0:
             validate_dataframe(chunk, table)

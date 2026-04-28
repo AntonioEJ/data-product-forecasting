@@ -54,3 +54,9 @@ testpaths = ["etl/test"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pdoc>=16.0.0",
+    "pylint>=4.0.5",
+]

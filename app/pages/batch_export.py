@@ -1,6 +1,6 @@
-"""Batch export view.
+"""Vista de exportación batch.
 
-Generates forecast files and uploads them to S3.
+Genera archivos de pronóstico y los sube a S3.
 """
 
 import streamlit as st
@@ -9,7 +9,7 @@ from utils.logging import get_logger
 
 
 def render():
-    """Render the batch export page."""
+    """Renderiza la página de exportación batch."""
     logger = get_logger(__name__)
     st.title("📦 Batch Export")
 

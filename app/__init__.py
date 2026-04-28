@@ -1,1 +1,1 @@
-"""Streamlit app package init."""
+"""Paquete de la aplicación Streamlit."""

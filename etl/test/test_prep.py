@@ -1,15 +1,14 @@
-"""Tests that validate ETL output files exist in data/prep/.
+"""Tests que validan la existencia de archivos de salida del ETL en data/prep/.
 
-This module contains smoke tests that verify the ETL pipeline produced all
-expected output files under ``data/prep/``. These tests are fast (no I/O
-beyond a filesystem stat call) and are designed to run in CI after the ETL
-step completes.
+Este módulo contiene smoke tests que verifican que el pipeline ETL produjo todos
+los archivos esperados bajo ``data/prep/``. Son rápidos (solo un stat al
+sistema de archivos) y están diseñados para correr en CI después del paso ETL.
 
-Notes:
-    - Paths are resolved relative to the repository root using ``__file__``,
-      so the tests work regardless of the working directory when pytest is
-      invoked (local, Docker, SageMaker Processing Job).
-    - To add new expected files, extend ``_EXPECTED_FILES``.
+Notas:
+    - Las rutas se resuelven relativas a la raíz del repositorio usando
+      ``__file__``, por lo que funcionan sin importar el directorio de trabajo
+      (local, Docker, SageMaker Processing Job).
+    - Para agregar nuevos archivos esperados, extender ``_EXPECTED_FILES``.
 """
 
 from __future__ import annotations
@@ -31,15 +30,16 @@ _EXPECTED_FILES: list[str] = [
 
 
 def test_prep_files_exist() -> None:
-    """Verify that all expected ETL output files are present in data/prep/.
+    """Verifica que los archivos de salida del ETL existan en data/prep/.
 
-    Iterates over ``_EXPECTED_FILES`` and asserts each one exists on disk.
-    Logs a summary of present and missing files to aid debugging in CI logs.
+    Itera sobre ``_EXPECTED_FILES`` y verifica que cada uno exista en disco.
+    Registra un resumen de archivos presentes y faltantes para facilitar
+    la depuración en logs de CI.
 
     Raises:
-        AssertionError: If one or more expected files are missing, with a
-            descriptive message listing each missing filename and the
-            directory that was checked.
+        AssertionError: Si uno o más archivos esperados faltan, con un
+            mensaje descriptivo listando cada archivo faltante y el
+            directorio verificado.
     """
     logger.info("Checking ETL output files in %s", _DATA_PREP)
 

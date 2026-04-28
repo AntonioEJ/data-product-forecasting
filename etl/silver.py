@@ -1,137 +1,221 @@
 #!/usr/bin/env python3
-"""Silver Layer ETL Script — Medallion Architecture.
+"""Script ETL de la capa Silver — Arquitectura Medallion.
 
-Automates loading all Parquet files from ``data/prep/`` to S3 and registers
-each file as an independent table in AWS Glue Data Catalog (Silver layer).
+Automatiza la carga de todos los archivos Parquet de ``data/prep/`` a S3
+y registra cada uno como tabla independiente en AWS Glue Data Catalog.
 
-Features:
-- Auto-discovers all ``.parquet`` files in ``data/prep/``.
-- Uploads each file as a Parquet dataset to S3 under:
-  ``s3://<bucket>/forecasting/silver/<table_name>/``
-- Registers each table in Glue with the filename (no extension) as table name.
-- Basic validation: each file must have at least one row.
-- Reproducible: uses repo-relative paths, works in any cloned environment.
-- Final validation: confirms all Parquet files were uploaded to S3.
+Características:
+- Descubre automáticamente todos los ``.parquet`` en ``data/prep/``.
+- Lectura archivo por archivo; libera memoria con ``del df`` + ``gc.collect()``.
+- Subida a S3 bajo ``s3://<bucket>/forecasting/silver/<tabla>/``.
+- Registro en Glue bajo ``forecasting_silver``.
+- Idempotente: ``mode="overwrite"`` en cada ejecución.
+- Cifras de control al final: tablas procesadas, filas totales, tiempo.
+- Logs a consola y a ``artifacts/logs/silver_etl.log``.
 
-Usage::
+Uso::
 
-    python etl/silver.py --bucket <s3-bucket-name>
+    python etl/silver.py --bucket <nombre-bucket-s3>
 
-Requirements:
-    awswrangler, boto3, pandas — with S3 and Glue write permissions.
+Requisitos:
+    awswrangler, boto3, pandas — con permisos de escritura en S3 y Glue.
 
-Author:
-    José Antonio Esparza — 2026-04
+Autores:
+    José Antonio Esparza, Gustavo Pardo — 2026-04
 """
 
 import argparse
+import gc
 import logging
 import os
+import sys
+import time
 
 import awswrangler as wr
 import pandas as pd
 
+GLUE_DATABASE: str = "forecasting_silver"
+S3_PREFIX_TEMPLATE: str = "s3://{bucket}/forecasting/silver/{table}/"
 
-def setup_logging():
-    """Configura y retorna un logger con salida a consola.
+# Archivos a cargar en la capa Silver (whitelist explícita)
+SILVER_FILES: list[str] = [
+    "df_base.parquet",
+    "monthly_with_lags.parquet",
+]
+
+
+def setup_logging(log_dir: str) -> logging.Logger:
+    """Configura logger con salida a consola y archivo.
+
+    Args:
+        log_dir: Ruta al directorio donde se escribirá el log.
 
     Returns:
-        logging.Logger: Instancia de logger configurada.
+        Instancia de logger configurada.
     """
-    logger = logging.getLogger("silver_etl")
-    logger.setLevel(logging.INFO)
-    if not logger.handlers:
+    os.makedirs(log_dir, exist_ok=True)
+    _logger = logging.getLogger("silver_etl")
+    _logger.setLevel(logging.INFO)
+    if not _logger.handlers:
+        fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
         console = logging.StreamHandler()
-        logger.addHandler(console)
-    return logger
+        console.setFormatter(fmt)
+        _logger.addHandler(console)
+        fh = logging.FileHandler(os.path.join(log_dir, "silver_etl.log"))
+        fh.setFormatter(fmt)
+        _logger.addHandler(fh)
+    return _logger
 
 
-logger = setup_logging()
+logger = logging.getLogger("silver_etl")
 
 
 def validate_file(file_path: str) -> None:
     """Valida que el archivo exista en el sistema de archivos.
 
     Args:
-        file_path (str): Ruta absoluta o relativa al archivo a validar.
+        file_path: Ruta absoluta o relativa al archivo a validar.
 
     Raises:
         FileNotFoundError: Si el archivo no existe.
     """
     if not os.path.isfile(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
+        raise FileNotFoundError(f"Archivo no encontrado: {file_path}")
 
 
 def validate_dataframe(df: pd.DataFrame, table_name: str) -> None:
     """Valida que el DataFrame no esté vacío.
 
     Args:
-        df (pd.DataFrame): DataFrame a validar.
-        table_name (str): Nombre lógico de la tabla (para logs).
+        df: DataFrame a validar.
+        table_name: Nombre lógico de la tabla (para logs).
 
     Raises:
         AssertionError: Si el DataFrame está vacío.
     """
-    assert not df.empty, f"DataFrame for '{table_name}' is empty"
-    logger.info(f"✓ {table_name} passed validación básica ({df.shape[0]} rows)")
+    assert not df.empty, f"DataFrame para '{table_name}' está vacío"
+    logger.info("✓ %s — validación básica OK (%d filas)", table_name, len(df))
 
 
-def main():
-    """Discover all Parquet files in data/prep/, validate, upload to S3, and register.
+def upload_table(path: str, table: str, bucket: str) -> int:
+    """Lee un Parquet y lo sube a S3 registrando en Glue.
 
-    Validates all Parquet files have been successfully uploaded at the end.
+    Libera memoria con ``del df`` + ``gc.collect()`` al finalizar.
+
+    Args:
+        path: Ruta local al archivo Parquet.
+        table: Nombre de la tabla destino en S3/Glue.
+        bucket: Nombre del bucket S3.
+
+    Returns:
+        Total de filas procesadas.
     """
-    parser = argparse.ArgumentParser()
+    df = pd.read_parquet(path)
+    df.columns = df.columns.str.lower()
+    validate_dataframe(df, table)
+    row_count = len(df)
+    s3_path = S3_PREFIX_TEMPLATE.format(bucket=bucket, table=table)
+    wr.s3.to_parquet(
+        df,
+        path=s3_path,
+        dataset=True,
+        mode="overwrite",
+        database=GLUE_DATABASE,
+        table=table,
+    )
+    del df
+    gc.collect()
+    return row_count
+
+
+def main() -> None:
+    """Descubre Parquets, valida, sube a S3 y registra en Glue.
+
+    Imprime cifras de control al finalizar: tablas procesadas, filas totales y
+    tiempo de ejecución. Termina con código 1 ante cualquier error no manejado.
+    """
+    parser = argparse.ArgumentParser(
+        description="ETL capa Silver — Parquet → S3 + Glue"
+    )
     parser.add_argument("--bucket", required=True, help="Nombre del bucket S3 destino")
     args = parser.parse_args()
+
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_dir = os.path.join(repo_root, "data", "prep")
-    s3_prefix_template = "s3://{bucket}/forecasting/silver/{table}/"
-    glue_database = "forecasting_silver"
-    if not os.path.isdir(data_dir):
-        raise RuntimeError(
-            f"No se encontró el directorio de datos esperado: {data_dir}"
+    log_dir = os.path.join(repo_root, "artifacts", "logs")
+
+    setup_logging(log_dir)
+
+    try:
+        if not os.path.isdir(data_dir):
+            raise RuntimeError(f"Directorio no encontrado: {data_dir}")
+
+        archivos = sorted(
+            f for f in SILVER_FILES if os.path.isfile(os.path.join(data_dir, f))
         )
-    for filename in os.listdir(data_dir):
-        if filename.endswith(".parquet"):
+        missing = [
+            f for f in SILVER_FILES if not os.path.isfile(os.path.join(data_dir, f))
+        ]
+        if missing:
+            logger.warning(
+                "Archivos no encontrados en %s: %s",
+                data_dir,
+                ", ".join(missing),
+            )
+        if not archivos:
+            raise RuntimeError(
+                f"Ningún archivo de la whitelist encontrado en {data_dir}"
+            )
+
+        logger.info("=== Silver ETL — inicio ===")
+        logger.info(
+            "Bucket: %s | Data dir: %s | Archivos: %d",
+            args.bucket,
+            data_dir,
+            len(archivos),
+        )
+
+        t_start = time.time()
+        tablas_ok: list[str] = []
+        tablas_fail: list[str] = []
+        total_filas = 0
+
+        for filename in archivos:
             table = os.path.splitext(filename)[0].lower()
             path = os.path.join(data_dir, filename)
-            validate_file(path)
-            df = pd.read_parquet(path)
-            df.columns = df.columns.str.lower()
-            validate_dataframe(df, table)
-            logger.info(f"✓ {table} ({filename}) leído: {df.shape[0]} filas")
-            s3_path = s3_prefix_template.format(bucket=args.bucket, table=table)
-            wr.s3.to_parquet(df, path=s3_path, dataset=True, mode="overwrite")
-            wr.catalog.create_table(
-                database=glue_database,
-                table=table,
-                path=s3_path,
-                columns_types=dict.fromkeys(df.columns, "string"),
-                exist_ok=True,
+            t0 = time.time()
+            try:
+                validate_file(path)
+                rows = upload_table(path, table, args.bucket)
+                elapsed = time.time() - t0
+                logger.info("✓ %s — %d filas subidas en %.1fs", table, rows, elapsed)
+                tablas_ok.append(table)
+                total_filas += rows
+            except Exception:
+                elapsed = time.time() - t0
+                logger.exception("✗ %s — error al procesar en %.1fs", table, elapsed)
+                tablas_fail.append(table)
+
+        # Cifras de control finales
+        elapsed_total = time.time() - t_start
+        logger.info("=== Silver ETL — cifras de control ===")
+        logger.info("  Tablas procesadas : %d / %d", len(tablas_ok), len(archivos))
+        logger.info("  Tablas fallidas   : %d", len(tablas_fail))
+        if tablas_fail:
+            logger.info("  Detalle fallas    : %s", ", ".join(tablas_fail))
+        logger.info("  Filas totales     : %d", total_filas)
+        logger.info("  Tiempo total      : %.1fs", elapsed_total)
+        logger.info("  Tablas OK         : %s", ", ".join(tablas_ok))
+        logger.info("=== Silver ETL — fin ===")
+
+        if tablas_fail:
+            raise RuntimeError(
+                f"Silver ETL terminó con errores en: {', '.join(tablas_fail)}"
             )
-            logger.info(f"✓ {table} cargado a S3 y registrado en Glue")
-    # Validación: verifica que todos los archivos Parquet fueron subidos
-    archivos_parquet = [f for f in os.listdir(data_dir) if f.endswith(".parquet")]
-    tablas_subidas = []
-    for filename in archivos_parquet:
-        table = os.path.splitext(filename)[0].lower()
-        s3_path = s3_prefix_template.format(bucket=args.bucket, table=table)
-        try:
-            files = wr.s3.list_objects(s3_path)
-            if files:
-                logger.info(
-                    f"✓ Validación: {table} existe en S3 ({len(files)} archivos)"
-                )
-                tablas_subidas.append(table)
-            else:
-                logger.error(f"✗ Validación: {table} NO tiene archivos en S3")
-        except Exception as e:
-            logger.error(f"✗ Validación: error al listar {s3_path}: {e}")
-    if len(tablas_subidas) == len(archivos_parquet):
-        logger.info("All Parquet files from data/prep uploaded to S3 successfully.")
-    else:
-        logger.error("Some Parquet files were not uploaded to S3. Check the logs.")
+
+    except Exception:
+        logger.exception("Error fatal en Silver ETL")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

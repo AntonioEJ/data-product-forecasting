@@ -1,6 +1,6 @@
-"""Business feedback view.
+"""Vista de feedback de negocio.
 
-Allows users to submit feedback on forecasts.
+Permite a los usuarios enviar retroalimentación sobre los pronósticos.
 """
 
 import streamlit as st
@@ -9,7 +9,7 @@ from utils.logging import get_logger
 
 
 def render():
-    """Render the business feedback page."""
+    """Renderiza la página de feedback de negocio."""
     logger = get_logger(__name__)
     st.title("💬 Business Feedback")
 

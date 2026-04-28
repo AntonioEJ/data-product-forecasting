@@ -1,1 +1,1 @@
-"""ETL package init."""
+"""Paquete del pipeline ETL."""

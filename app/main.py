@@ -1,7 +1,7 @@
-"""Main entrypoint for the Data Product Forecasting Streamlit App.
+"""Punto de entrada principal de la aplicación Streamlit de Forecasting.
 
-This app provides a demand forecasting data product interface
-for business users.
+Esta app provee una interfaz de producto de datos de pronóstico de demanda
+para usuarios de negocio.
 """
 
 import streamlit as st
@@ -16,7 +16,7 @@ from utils.logging import get_logger, setup_logging
 
 
 def main() -> None:
-    """Initialize application and handle navigation."""
+    """Inicializa la aplicación y maneja la navegación."""
     # Inicializar logging PRIMERO
     setup_logging()
 

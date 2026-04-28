@@ -1,6 +1,6 @@
-"""Model evaluation view.
+"""Vista de evaluación de modelo.
 
-Displays model performance metrics and comparison vs naive baseline.
+Muestra métricas de rendimiento del modelo y comparación vs baseline naive.
 """
 
 import pandas as pd
@@ -10,7 +10,7 @@ from utils.logging import get_logger
 
 
 def render():
-    """Render the model evaluation page."""
+    """Renderiza la página de evaluación de modelo."""
     logger = get_logger(__name__)
     st.title("📊 Model Evaluation")
 

@@ -1,6 +1,6 @@
-"""Forecast exploration view.
+"""Vista de exploración de pronósticos.
 
-Allows users to filter and visualize demand forecasts.
+Permite a los usuarios filtrar y visualizar pronósticos de demanda.
 """
 
 import pandas as pd
@@ -10,7 +10,7 @@ from utils.logging import get_logger
 
 
 def render():
-    """Render the forecast exploration page."""
+    """Renderiza la página de exploración de pronósticos."""
     logger = get_logger(__name__)
     st.title("🔎 Forecast Exploration")
 

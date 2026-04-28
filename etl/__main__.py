@@ -1,4 +1,4 @@
-"""ETL main entrypoint."""
+"""Punto de entrada principal del ETL."""
 
 from etl.etl import main
 

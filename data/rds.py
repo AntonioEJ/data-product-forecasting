@@ -1,4 +1,4 @@
-"""RDS PostgreSQL connection and data access layer."""
+"""Capa de conexión y acceso a datos en RDS PostgreSQL."""
 
 import logging
 import os
@@ -20,17 +20,17 @@ DB_CONFIG = {
 
 
 def get_connection() -> psycopg2.extensions.connection:
-    """Create a new database connection from environment variables.
+    """Crea una nueva conexión a la base de datos desde variables de entorno.
 
-    Connection parameters are read from RDS_HOST, RDS_PORT, RDS_DBNAME,
-    RDS_USER, and RDS_PASSWORD environment variables.
+    Los parámetros de conexión se leen de las variables de entorno RDS_HOST,
+    RDS_PORT, RDS_DBNAME, RDS_USER y RDS_PASSWORD.
 
     Returns:
-        psycopg2 connection object.
+        Objeto de conexión psycopg2.
 
     Raises:
-        ValueError: If RDS_PASSWORD environment variable is not set.
-        psycopg2.OperationalError: If the connection cannot be established.
+        ValueError: Si la variable de entorno RDS_PASSWORD no está definida.
+        psycopg2.OperationalError: Si no se puede establecer la conexión.
     """
     if not os.getenv("RDS_PASSWORD"):
         raise ValueError(
@@ -39,43 +39,46 @@ def get_connection() -> psycopg2.extensions.connection:
         )
     try:
         conn = psycopg2.connect(**DB_CONFIG)
-        logger.info("Connected to RDS PostgreSQL at host=%s", DB_CONFIG["host"])
+        logger.info("Conectado a RDS PostgreSQL en host=%s", DB_CONFIG["host"])
         return conn
     except psycopg2.OperationalError:
-        logger.exception("Failed to connect to RDS at host=%s", DB_CONFIG["host"])
+        logger.exception("Error al conectar a RDS en host=%s", DB_CONFIG["host"])
         raise
 
 
 def fetch_query(query: str, params: tuple | None = None) -> list[dict[str, Any]]:
-    """Execute a SELECT query and return results as a list of dicts.
+    """Ejecuta un SELECT y retorna los resultados como lista de diccionarios.
 
     Args:
-        query: SQL SELECT statement
-        params: Query parameters
+        query: Sentencia SQL SELECT.
+        params: Parámetros de la consulta.
+
     Returns:
-        List of rows as dicts
+        Lista de filas como diccionarios.
+
     Raises:
-        psycopg2.Error: If query fails
+        psycopg2.Error: Si la consulta falla.
     """
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params)
             results = cur.fetchall()
-            logger.info("SELECT query executed successfully, rows=%d", len(results))
+            logger.info("Consulta SELECT ejecutada, filas=%d", len(results))
             return list(results)
 
 
 def execute_query(query: str, params: tuple | None = None) -> None:
-    """Execute an INSERT/UPDATE/DELETE query.
+    """Ejecuta una sentencia INSERT/UPDATE/DELETE.
 
     Args:
-        query: SQL statement
-        params: Query parameters
+        query: Sentencia SQL.
+        params: Parámetros de la consulta.
+
     Raises:
-        psycopg2.Error: If query fails
+        psycopg2.Error: Si la consulta falla.
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(query, params)
             conn.commit()
-            logger.info("Write query executed and committed successfully")
+            logger.info("Consulta de escritura ejecutada y confirmada correctamente")

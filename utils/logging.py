@@ -1,6 +1,6 @@
-"""Centralized structured logging configuration for data-product-forecasting.
+"""Configuración centralizada de logging estructurado para data-product-forecasting.
 
-Designed for AWS CloudWatch compatibility.
+Diseñado para compatibilidad con AWS CloudWatch.
 """
 
 import logging
@@ -12,12 +12,13 @@ _LOGGER_INITIALIZED = False
 
 
 def setup_logging(level: int = logging.INFO) -> None:
-    """Configure root logger for structured logging.
+    """Configura el logger raíz para logging estructurado.
 
-    Ensures logs are compatible with AWS CloudWatch and avoids duplicate setup.
+    Asegura que los logs sean compatibles con AWS CloudWatch y evita
+    configuración duplicada.
 
     Args:
-        level (int): Logging level (default: INFO).
+        level: Nivel de logging (default: INFO).
     """
     global _LOGGER_INITIALIZED
 
@@ -47,12 +48,12 @@ def setup_logging(level: int = logging.INFO) -> None:
 
 
 def get_logger(name: str | None = None) -> logging.Logger:
-    """Get a logger instance with consistent configuration.
+    """Obtiene una instancia de logger con configuración consistente.
 
     Args:
-        name (Optional[str]): Logger name (typically __name__).
+        name: Nombre del logger (típicamente __name__).
 
     Returns:
-        logging.Logger: Configured logger.
+        Logger configurado.
     """
     return logging.getLogger(name)

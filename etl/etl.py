@@ -30,7 +30,7 @@ import pandas as pd
 
 ###Argparse
 def parse_args():
-    """Parses ETL command-line arguments."""
+    """Parsea argumentos de línea de comandos del ETL."""
     parser = argparse.ArgumentParser(
         prog="processing", description="ETL step: carga, limpieza y agregación mensual"
     )
@@ -66,7 +66,7 @@ class UTCFormatter(logging.Formatter):
     """Formatter que fuerza timestamps en UTC y en formato ISO 8601 (con sufijo Z)."""
 
     def formatTime(self, record, datefmt=None):  # noqa: N802 (firma esperada por logging)
-        """Format log time in UTC ISO 8601."""
+        """Formatea el tiempo del log en UTC ISO 8601."""
         dt = datetime.fromtimestamp(record.created, tz=UTC)
         return dt.isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -150,10 +150,11 @@ def find_repo_root(start: Path) -> Path:
 # Kaggle download (Extract) - Competencia
 # ----------------------------
 def _kaggle_credentials_available() -> bool:
-    """Valida si hay credenciales de Kaggle disponibles por.
+    """Valida si hay credenciales de Kaggle disponibles.
 
-    - env vars: KAGGLE_USERNAME y KAGGLE_KEY
-    - archivo: ~/.kaggle/kaggle.json
+    Verifica:
+    - Variables de entorno: KAGGLE_USERNAME y KAGGLE_KEY
+    - Archivo: ~/.kaggle/kaggle.json
     """
     if os.getenv("KAGGLE_USERNAME") and os.getenv("KAGGLE_KEY"):
         return True
@@ -476,14 +477,13 @@ def build_monthly_with_lags(
 # Main
 # ----------------------------
 def main() -> None:
-    """Execute the full ETL pipeline.
+    """Ejecuta el pipeline ETL completo.
 
-    Supports parametric paths via CLI arguments for SageMaker Processing Jobs
-    and Docker environments. Falls back to repository-relative defaults for
-    local execution.
+    Soporta rutas parametrizables vía argumentos CLI para SageMaker Processing
+    Jobs y entornos Docker. Por defecto usa las rutas relativas al repositorio.
 
-    Notes:
-        SageMaker Processing Jobs should pass:
+    Notas:
+        SageMaker Processing Jobs debe recibir:
           --raw-dir /opt/ml/processing/input/raw
           --prep-dir /opt/ml/processing/output
           --artifacts-dir /opt/ml/processing/output/artifacts

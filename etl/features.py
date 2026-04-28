@@ -49,14 +49,14 @@ def build_features(df: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
 def make_modeling_dataset(
     df_feat: pd.DataFrame, cfg: ModelConfig
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Genera dataset final eliminando NA en target/features.
+    """Genera dataset final eliminando NA en target y features.
 
     Args:
         df_feat: DataFrame con features.
         cfg: Configuración.
 
     Returns:
-        (df_model, feature_cols)
+        Tupla (df_model, feature_cols).
     """
     feature_cols = (
         list(cfg.base_features)
@@ -75,14 +75,14 @@ def make_modeling_dataset(
 def temporal_split(
     df_model: pd.DataFrame, cfg: ModelConfig
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split temporal tipo notebook: cutoff por quantile del tiempo.
+    """Split temporal: corte por quantil del tiempo.
 
     Args:
         df_model: Dataset listo para modelar.
         cfg: Configuración.
 
     Returns:
-        (train_df, valid_df)
+        Tupla (train_df, valid_df).
     """
     cutoff = df_model[cfg.time_col].quantile(cfg.train_quantile_cutoff)
     train_df = df_model[df_model[cfg.time_col] <= cutoff].copy()

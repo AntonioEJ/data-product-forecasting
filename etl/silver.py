@@ -33,10 +33,11 @@ import time
 
 import awswrangler as wr
 import pandas as pd
+import pyarrow.parquet as pq
 
 GLUE_DATABASE: str = "forecasting_silver"
 S3_PREFIX_TEMPLATE: str = "s3://{bucket}/forecasting/silver/{table}/"
-CHUNK_SIZE: int = 500_000
+CHUNK_SIZE: int = 1_000_000
 
 # Archivos a cargar en la capa Silver (whitelist explícita)
 SILVER_FILES: list[str] = [
@@ -92,17 +93,25 @@ def validate_dataframe(df: pd.DataFrame, table_name: str) -> None:
         table_name: Nombre lógico de la tabla (para logs).
 
     Raises:
-        AssertionError: Si el DataFrame está vacío.
+        ValueError: Si el DataFrame está vacío.
     """
-    assert not df.empty, f"DataFrame para '{table_name}' está vacío"
+    if df.empty:
+        raise ValueError(f"DataFrame para '{table_name}' está vacío")
     logger.info("✓ %s — validación básica OK (%d filas)", table_name, len(df))
 
 
 def upload_table(path: str, table: str, bucket: str) -> int:
-    """Lee un Parquet en chunks y lo sube a S3 registrando en Glue.
+    """Lee un Parquet y lo sube a S3 registrando en Glue.
 
-    Divide el archivo en lotes de ``CHUNK_SIZE`` filas para limitar el
-    consumo de memoria. Libera cada chunk con ``del`` + ``gc.collect()``.
+    Consulta los metadatos del archivo para elegir la ruta más eficiente:
+
+    * **Archivo pequeño** (≤ ``CHUNK_SIZE`` filas): lectura completa y una
+      sola subida a S3, minimizando llamadas de red.
+    * **Archivo grande** (> ``CHUNK_SIZE``): lectura en streaming con
+      ``pyarrow.parquet.ParquetFile.iter_batches`` para limitar la RAM.
+
+    Usa ``self_destruct=True`` al convertir Arrow → pandas para liberar
+    los buffers de Arrow de inmediato.
 
     Args:
         path: Ruta local al archivo Parquet.
@@ -113,13 +122,41 @@ def upload_table(path: str, table: str, bucket: str) -> int:
         Total de filas procesadas.
     """
     s3_path = S3_PREFIX_TEMPLATE.format(bucket=bucket, table=table)
-    pf = pd.read_parquet(path)
-    pf.columns = pf.columns.str.lower()
-    total_rows = len(pf)
-    row_count = 0
+    meta = pq.read_metadata(path)
+    total_rows = meta.num_rows
+    logger.info(
+        "%s — %d filas detectadas (%d row-groups)",
+        table,
+        total_rows,
+        meta.num_row_groups,
+    )
 
-    for chunk_idx in range(0, total_rows, CHUNK_SIZE):
-        chunk = pf.iloc[chunk_idx : chunk_idx + CHUNK_SIZE].copy()
+    # ── Ruta rápida: archivo cabe en un solo lote ──
+    if total_rows <= CHUNK_SIZE:
+        arrow_table = pq.read_table(path)
+        df = arrow_table.to_pandas(self_destruct=True)
+        del arrow_table
+        df.columns = df.columns.str.lower()
+        validate_dataframe(df, table)
+        wr.s3.to_parquet(
+            df,
+            path=s3_path,
+            dataset=True,
+            mode="overwrite",
+            database=GLUE_DATABASE,
+            table=table,
+        )
+        row_count = len(df)
+        del df
+        gc.collect()
+        return row_count
+
+    # ── Ruta en streaming: archivos grandes ──
+    parquet_file = pq.ParquetFile(path)
+    row_count = 0
+    for chunk_idx, batch in enumerate(parquet_file.iter_batches(batch_size=CHUNK_SIZE)):
+        chunk = batch.to_pandas(self_destruct=True)
+        chunk.columns = chunk.columns.str.lower()
         if chunk_idx == 0:
             validate_dataframe(chunk, table)
         mode = "overwrite" if chunk_idx == 0 else "append"
@@ -132,12 +169,101 @@ def upload_table(path: str, table: str, bucket: str) -> int:
             table=table,
         )
         row_count += len(chunk)
-        del chunk
+        del chunk, batch
         gc.collect()
 
-    del pf
-    gc.collect()
     return row_count
+
+
+def _discover_files(data_dir: str) -> list[str]:
+    """Filtra la whitelist contra archivos existentes en disco.
+
+    Args:
+        data_dir: Directorio donde buscar los archivos.
+
+    Returns:
+        Lista ordenada de archivos encontrados.
+
+    Raises:
+        RuntimeError: Si el directorio no existe o no hay archivos.
+    """
+    if not os.path.isdir(data_dir):
+        raise RuntimeError(f"Directorio no encontrado: {data_dir}")
+
+    archivos = sorted(
+        f for f in SILVER_FILES if os.path.isfile(os.path.join(data_dir, f))
+    )
+    missing = sorted(set(SILVER_FILES) - set(archivos))
+    if missing:
+        logger.warning(
+            "Archivos no encontrados en %s: %s", data_dir, ", ".join(missing)
+        )
+    if not archivos:
+        raise RuntimeError(f"Ningún archivo de la whitelist encontrado en {data_dir}")
+    return archivos
+
+
+def _process_tables(
+    archivos: list[str], data_dir: str, bucket: str
+) -> tuple[list[str], list[str], int]:
+    """Itera sobre los archivos, sube cada tabla y acumula resultados.
+
+    Args:
+        archivos: Nombres de archivo a procesar.
+        data_dir: Directorio raíz de los archivos.
+        bucket: Nombre del bucket S3 destino.
+
+    Returns:
+        Tupla ``(tablas_ok, tablas_fail, total_filas)``.
+    """
+    tablas_ok: list[str] = []
+    tablas_fail: list[str] = []
+    total_filas = 0
+
+    for filename in archivos:
+        table = os.path.splitext(filename)[0].lower()
+        path = os.path.join(data_dir, filename)
+        t0 = time.time()
+        try:
+            validate_file(path)
+            rows = upload_table(path, table, bucket)
+            elapsed = time.time() - t0
+            logger.info("✓ %s — %d filas en %.1fs", table, rows, elapsed)
+            tablas_ok.append(table)
+            total_filas += rows
+        except Exception:  # pylint: disable=broad-exception-caught
+            elapsed = time.time() - t0
+            logger.exception("✗ %s — error en %.1fs", table, elapsed)
+            tablas_fail.append(table)
+
+    return tablas_ok, tablas_fail, total_filas
+
+
+def _log_summary(
+    tablas_ok: list[str],
+    tablas_fail: list[str],
+    total_filas: int,
+    total_archivos: int,
+    elapsed: float,
+) -> None:
+    """Imprime cifras de control del pipeline Silver.
+
+    Args:
+        tablas_ok: Tablas procesadas exitosamente.
+        tablas_fail: Tablas que fallaron.
+        total_filas: Filas totales subidas.
+        total_archivos: Archivos detectados inicialmente.
+        elapsed: Segundos transcurridos.
+    """
+    logger.info("=== Silver ETL — cifras de control ===")
+    logger.info("  Tablas procesadas : %d / %d", len(tablas_ok), total_archivos)
+    logger.info("  Tablas fallidas   : %d", len(tablas_fail))
+    if tablas_fail:
+        logger.info("  Detalle fallas    : %s", ", ".join(tablas_fail))
+    logger.info("  Filas totales     : %d", total_filas)
+    logger.info("  Tiempo total      : %.1fs", elapsed)
+    logger.info("  Tablas OK         : %s", ", ".join(tablas_ok))
+    logger.info("=== Silver ETL — fin ===")
 
 
 def main() -> None:
@@ -159,25 +285,7 @@ def main() -> None:
     setup_logging(log_dir)
 
     try:
-        if not os.path.isdir(data_dir):
-            raise RuntimeError(f"Directorio no encontrado: {data_dir}")
-
-        archivos = sorted(
-            f for f in SILVER_FILES if os.path.isfile(os.path.join(data_dir, f))
-        )
-        missing = [
-            f for f in SILVER_FILES if not os.path.isfile(os.path.join(data_dir, f))
-        ]
-        if missing:
-            logger.warning(
-                "Archivos no encontrados en %s: %s",
-                data_dir,
-                ", ".join(missing),
-            )
-        if not archivos:
-            raise RuntimeError(
-                f"Ningún archivo de la whitelist encontrado en {data_dir}"
-            )
+        archivos = _discover_files(data_dir)
 
         logger.info("=== Silver ETL — inicio ===")
         logger.info(
@@ -191,44 +299,19 @@ def main() -> None:
         logger.info("Base de datos Glue '%s' lista.", GLUE_DATABASE)
 
         t_start = time.time()
-        tablas_ok: list[str] = []
-        tablas_fail: list[str] = []
-        total_filas = 0
-
-        for filename in archivos:
-            table = os.path.splitext(filename)[0].lower()
-            path = os.path.join(data_dir, filename)
-            t0 = time.time()
-            try:
-                validate_file(path)
-                rows = upload_table(path, table, args.bucket)
-                elapsed = time.time() - t0
-                logger.info("✓ %s — %d filas subidas en %.1fs", table, rows, elapsed)
-                tablas_ok.append(table)
-                total_filas += rows
-            except Exception:
-                elapsed = time.time() - t0
-                logger.exception("✗ %s — error al procesar en %.1fs", table, elapsed)
-                tablas_fail.append(table)
-
-        # Cifras de control finales
-        elapsed_total = time.time() - t_start
-        logger.info("=== Silver ETL — cifras de control ===")
-        logger.info("  Tablas procesadas : %d / %d", len(tablas_ok), len(archivos))
-        logger.info("  Tablas fallidas   : %d", len(tablas_fail))
-        if tablas_fail:
-            logger.info("  Detalle fallas    : %s", ", ".join(tablas_fail))
-        logger.info("  Filas totales     : %d", total_filas)
-        logger.info("  Tiempo total      : %.1fs", elapsed_total)
-        logger.info("  Tablas OK         : %s", ", ".join(tablas_ok))
-        logger.info("=== Silver ETL — fin ===")
+        tablas_ok, tablas_fail, total_filas = _process_tables(
+            archivos, data_dir, args.bucket
+        )
+        _log_summary(
+            tablas_ok, tablas_fail, total_filas, len(archivos), time.time() - t_start
+        )
 
         if tablas_fail:
             raise RuntimeError(
                 f"Silver ETL terminó con errores en: {', '.join(tablas_fail)}"
             )
 
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.exception("Error fatal en Silver ETL")
         sys.exit(1)
 

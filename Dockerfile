@@ -1,37 +1,23 @@
-# syntax=docker/dockerfile:1.4
 FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_NO_CACHE_DIR=on
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set workdir
 WORKDIR /app
 
-# Copy pyproject.toml and lockfile
-COPY pyproject.toml .
-COPY uv.lock .
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-# Install uv and project dependencies with locked versions
-RUN pip install --upgrade pip && pip install uv && uv sync --frozen --no-dev
+RUN pip install streamlit pandas numpy scikit-learn great-tables --no-cache-dir
 
-# Copy the rest of the code
-COPY . .
+COPY frontend/ ./frontend/
+COPY backend/ ./backend/
+COPY artifacts/ ./artifacts/
+COPY data/analysis/ ./data/analysis/
+COPY .streamlit/ ./.streamlit/
 
-# Expose Streamlit port
 EXPOSE 8501
 
-# Streamlit config (headless, port)
-ENV STREAMLIT_SERVER_HEADLESS=true \
-    STREAMLIT_SERVER_PORT=8501
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8501/_stcore/health || exit 1
 
-# Entrypoint
-CMD ["streamlit", "run", "app/main.py"]
+CMD ["streamlit", "run", "frontend/app.py", \
+     "--server.address=0.0.0.0", \
+     "--server.port=8501", \
+     "--server.headless=true"]

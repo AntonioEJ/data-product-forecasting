@@ -1,102 +1,186 @@
 
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  data-product-forecasting v0.1.0
-  Production-grade demand forecasting data product in AWS.
-  Deploys all core infrastructure: RDS, ECR, ECS Fargate, ALB, IAM, CloudWatch, and Secrets Manager.
+  data-product-forecasting — Infraestructura completa.
+  Despliega RDS PostgreSQL 17, Secrets Manager, ECR, ECS Fargate con ALB,
+  IAM, CloudWatch y opcionalmente una read replica de RDS.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PARAMETERS
 # ─────────────────────────────────────────────────────────────────────────────
 Parameters:
+
   VpcId:
     Type: AWS::EC2::VPC::Id
-    Description: VPC where the application will be deployed.
+    Description: VPC donde se desplegará la aplicación y RDS.
+
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: Public subnets for the ALB and ECS tasks.
+    Description: >
+      Al menos dos subnets en diferentes AZs. Usadas para ALB, ECS y RDS.
+
   ImageUri:
     Type: String
-    Description: Full ECR image URI for the app container.
+    Description: URI completo de la imagen ECR para el contenedor Streamlit.
+
   ServiceName:
     Type: String
     Default: forecast-app
     MaxLength: 20
-    Description: Service name (max 20 characters). Used as a prefix for all resources.
+    Description: Prefijo para nombrar todos los recursos.
+
   DesiredCount:
     Type: Number
     Default: 1
     MinValue: 1
-    Description: Number of Fargate tasks to keep running.
+    Description: Número de tareas Fargate a mantener activas.
+
   Cpu:
     Type: String
     Default: '256'
     AllowedValues: ['256', '512', '1024', '2048', '4096']
-    Description: CPU units for the Fargate task (256 = 0.25 vCPU).
+    Description: Unidades de CPU para la tarea Fargate.
+
   Memory:
     Type: String
     Default: '512'
     AllowedValues: ['512', '1024', '2048', '4096', '8192']
-    Description: Memory in MiB for the Fargate task.
+    Description: Memoria en MiB para la tarea Fargate.
+
   LogRetentionDays:
     Type: Number
     Default: 7
     AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90]
-    Description: CloudWatch log retention in days.
-  DBUser:
+    Description: Retención de logs en CloudWatch (días).
+
+  DBName:
     Type: String
-    NoEcho: true
-    Description: RDS master username
+    Default: forecasting
+    Description: Nombre de la base de datos inicial en RDS.
+
+  DBUsername:
+    Type: String
+    Default: postgres
+    NoEcho: false
+    Description: Usuario maestro de PostgreSQL.
+
   DBPassword:
     Type: String
     NoEcho: true
-    Description: RDS master password
+    MinLength: 8
+    Description: Contraseña maestra de PostgreSQL (mínimo 8 caracteres).
+
+  CreateReadReplica:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: >
+      Crear una read replica para separar lecturas ETL de escrituras CRUD.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONDITIONS
+# ─────────────────────────────────────────────────────────────────────────────
+Conditions:
+  EnableReadReplica: !Equals [!Ref CreateReadReplica, 'true']
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RESOURCES
 # ─────────────────────────────────────────────────────────────────────────────
 Resources:
-  # RDS PostgreSQL
-  ForecastDB:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBInstanceIdentifier: !Sub '${ServiceName}-db'
-      AllocatedStorage: 20
-      DBInstanceClass: db.t3.micro
-      Engine: postgres
-      EngineVersion: 15.5
-      MasterUsername: !Ref DBUser
-      MasterUserPassword: !Ref DBPassword
-      VPCSecurityGroups: []
-      DBSubnetGroupName: !Ref ForecastDBSubnetGroup
-      PubliclyAccessible: false
-      MultiAZ: false
-      StorageType: gp2
-      BackupRetentionPeriod: 7
-      DeletionProtection: false
 
-  ForecastDBSubnetGroup:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # RDS PostgreSQL
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  RdsCredentialsSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Name: !Sub '${ServiceName}/rds/credentials'
+      Description: Credenciales maestras de RDS PostgreSQL.
+      SecretString: !Sub |
+        {
+          "username": "${DBUsername}",
+          "password": "${DBPassword}",
+          "dbname":   "${DBName}",
+          "host":     "${RdsInstance.Endpoint.Address}",
+          "port":     "5432",
+          "engine":   "postgres"
+        }
+
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'PostgreSQL access for ${ServiceName}'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+          Description: PostgreSQL — acceso público (SageMaker PublicInternetOnly)
+      Tags:
+        - Key: app
+          Value: !Ref ServiceName
+
+  RdsSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
-      DBSubnetGroupDescription: Subnet group for RDS
+      DBSubnetGroupDescription: !Sub 'Subnet group for ${ServiceName} RDS'
       SubnetIds: !Ref SubnetIds
 
+  RdsInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Sub '${ServiceName}-db'
+      DBInstanceClass: db.t3.micro
+      Engine: postgres
+      EngineVersion: '17.4'
+      DBName: !Ref DBName
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      AllocatedStorage: '20'
+      StorageType: gp2
+      MultiAZ: false
+      PubliclyAccessible: true
+      DBSubnetGroupName: !Ref RdsSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroup
+      BackupRetentionPeriod: 7
+      StorageEncrypted: true
+      AutoMinorVersionUpgrade: true
+      DeletionProtection: false
+
+  RdsReadReplica:
+    Type: AWS::RDS::DBInstance
+    Condition: EnableReadReplica
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Sub '${ServiceName}-db-replica'
+      DBInstanceClass: db.t3.micro
+      SourceDBInstanceIdentifier: !Ref RdsInstance
+      PubliclyAccessible: true
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroup
+      AutoMinorVersionUpgrade: true
+
+  # ═══════════════════════════════════════════════════════════════════════════
   # ECR Repository
-  ForecastECRRepo:
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  ECRRepo:
     Type: AWS::ECR::Repository
     Properties:
       RepositoryName: !Sub '${ServiceName}-ecr'
 
-  # Secrets Manager for DB credentials
-  ForecastSecrets:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub '${ServiceName}-db-credentials'
-      Description: RDS credentials for app
-      SecretString: !Sub |
-        {"username": "${DBUser}", "password": "${DBPassword}"}
+  # ═══════════════════════════════════════════════════════════════════════════
+  # IAM Roles
+  # ═══════════════════════════════════════════════════════════════════════════
 
-  # IAM Roles for ECS
   TaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -118,9 +202,8 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                  - ssm:GetParameters
                   - kms:Decrypt
-                Resource: '*'
+                Resource: !Ref RdsCredentialsSecret
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -134,7 +217,7 @@ Resources:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: StreamlitDataSciencePolicy
+        - PolicyName: AppPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -142,30 +225,21 @@ Resources:
                 Action:
                   - s3:GetObject
                   - s3:PutObject
-                  - s3:DeleteObject
                   - s3:ListBucket
-                  - s3:GetBucketLocation
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - sagemaker:InvokeEndpoint
-                  - sagemaker:InvokeEndpointAsync
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - bedrock:InvokeModel
-                  - bedrock:InvokeModelWithResponseStream
                 Resource: '*'
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: '*'
+                Resource: !Ref RdsCredentialsSecret
               - Effect: Allow
                 Action:
                   - cloudwatch:PutMetricData
                 Resource: '*'
 
-  # ECS Cluster
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ECS Cluster + CloudWatch
+  # ═══════════════════════════════════════════════════════════════════════════
+
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -175,49 +249,45 @@ Resources:
       DefaultCapacityProviderStrategy:
         - CapacityProvider: FARGATE
           Weight: 1
-      Tags:
-        - Key: app
-          Value: !Ref ServiceName
 
-  # CloudWatch Log Group
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/ecs/${ServiceName}'
       RetentionInDays: !Ref LogRetentionDays
 
-  # Security Groups
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Networking — Security Groups
+  # ═══════════════════════════════════════════════════════════════════════════
+
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub 'ALB HTTP access for ${ServiceName}'
+      GroupDescription: !Sub 'ALB HTTP — ${ServiceName}'
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
           CidrIp: '0.0.0.0/0'
-          Description: HTTP from internet
-      Tags:
-        - Key: app
-          Value: !Ref ServiceName
+          Description: HTTP desde internet
 
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub 'ECS tasks access from ALB for ${ServiceName}'
+      GroupDescription: !Sub 'ECS tasks — ${ServiceName}'
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 8501
           ToPort: 8501
           SourceSecurityGroupId: !Ref ALBSecurityGroup
-          Description: Traffic from ALB to Streamlit port
-      Tags:
-        - Key: app
-          Value: !Ref ServiceName
+          Description: Tráfico ALB → Streamlit
 
-  # Application Load Balancer
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ALB + Target Group + Listener
+  # ═══════════════════════════════════════════════════════════════════════════
+
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -227,9 +297,6 @@ Resources:
       Subnets: !Ref SubnetIds
       SecurityGroups:
         - !Ref ALBSecurityGroup
-      Tags:
-        - Key: app
-          Value: !Ref ServiceName
 
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -245,9 +312,6 @@ Resources:
       HealthCheckTimeoutSeconds: 10
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
-      Tags:
-        - Key: app
-          Value: !Ref ServiceName
 
   Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -259,7 +323,10 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
 
-  # ECS Task Definition
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ECS Task Definition + Service
+  # ═══════════════════════════════════════════════════════════════════════════
+
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
@@ -281,6 +348,17 @@ Resources:
           Environment:
             - Name: AWS_DEFAULT_REGION
               Value: !Ref AWS::Region
+            - Name: RDS_HOST
+              Value: !GetAtt RdsInstance.Endpoint.Address
+            - Name: RDS_PORT
+              Value: '5432'
+            - Name: RDS_DBNAME
+              Value: !Ref DBName
+            - Name: RDS_USER
+              Value: !Ref DBUsername
+          Secrets:
+            - Name: RDS_PASSWORD
+              ValueFrom: !Sub '${RdsCredentialsSecret}:password::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -296,7 +374,6 @@ Resources:
             Retries: 3
             StartPeriod: 60
 
-  # ECS Service
   ECSService:
     Type: AWS::ECS::Service
     DependsOn: Listener
@@ -317,32 +394,47 @@ Resources:
           ContainerPort: 8501
           TargetGroupArn: !Ref TargetGroup
       HealthCheckGracePeriodSeconds: 120
-      Tags:
-        - Key: app
-          Value: !Ref ServiceName
 
 # ─────────────────────────────────────────────────────────────────────────────
 # OUTPUTS
 # ─────────────────────────────────────────────────────────────────────────────
 Outputs:
+
   AppURL:
-    Description: Public URL of the Streamlit application
+    Description: URL pública de la aplicación Streamlit.
     Value: !Sub 'http://${ALB.DNSName}'
-  ALBDNSName:
-    Description: DNS name of the Application Load Balancer
-    Value: !GetAtt ALB.DNSName
-  ECSClusterName:
-    Description: ECS cluster name
-    Value: !Ref ECSCluster
-  LogGroupName:
-    Description: CloudWatch log group name
-    Value: !Ref LogGroup
-  RDSInstanceEndpoint:
-    Description: Endpoint for the RDS instance
-    Value: !GetAtt ForecastDB.Endpoint.Address
+
+  RdsEndpoint:
+    Description: Hostname de RDS para la connection string.
+    Value: !GetAtt RdsInstance.Endpoint.Address
+
+  RdsPort:
+    Description: Puerto de PostgreSQL.
+    Value: !GetAtt RdsInstance.Endpoint.Port
+
+  ConnectionString:
+    Description: >
+      Template de connection string (reemplazar <password> con el valor de
+      Secrets Manager — nunca hardcodear credenciales).
+    Value: !Sub 'postgresql+psycopg://${DBUsername}:<password>@${RdsInstance.Endpoint.Address}:5432/${DBName}'
+
+  RdsSecretArn:
+    Description: ARN del secreto con credenciales RDS.
+    Value: !Ref RdsCredentialsSecret
+
+  RdsReplicaEndpoint:
+    Condition: EnableReadReplica
+    Description: Hostname de la read replica para lecturas ETL.
+    Value: !GetAtt RdsReadReplica.Endpoint.Address
+
   ECRRepoUri:
-    Description: ECR repository URI
-    Value: !GetAtt ForecastECRRepo.RepositoryUri
-  SecretsArn:
-    Description: ARN of the Secrets Manager secret
-    Value: !Ref ForecastSecrets
+    Description: URI del repositorio ECR.
+    Value: !GetAtt ECRRepo.RepositoryUri
+
+  ECSClusterName:
+    Description: Nombre del cluster ECS.
+    Value: !Ref ECSCluster
+
+  LogGroupName:
+    Description: Log group de CloudWatch.
+    Value: !Ref LogGroup

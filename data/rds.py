@@ -2,83 +2,63 @@
 
 import logging
 import os
+from functools import lru_cache
 from typing import Any
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger("data.rds")
-logger.setLevel(logging.INFO)
-
-DB_CONFIG = {
-    "host": os.getenv("RDS_HOST", "localhost"),
-    "port": int(os.getenv("RDS_PORT", "5432")),
-    "dbname": os.getenv("RDS_DBNAME", "forecasting"),
-    "user": os.getenv("RDS_USER", "postgres"),
-    "password": os.getenv("RDS_PASSWORD", ""),
-}
 
 
-def get_connection() -> psycopg2.extensions.connection:
-    """Crea una nueva conexión a la base de datos desde variables de entorno.
-
-    Los parámetros de conexión se leen de las variables de entorno RDS_HOST,
-    RDS_PORT, RDS_DBNAME, RDS_USER y RDS_PASSWORD.
+@lru_cache(maxsize=1)
+def _get_engine() -> Engine:
+    """Crea y cachea el engine con connection pooling.
 
     Returns:
-        Objeto de conexión psycopg2.
+        Engine de SQLAlchemy.
 
     Raises:
-        ValueError: Si la variable de entorno RDS_PASSWORD no está definida.
-        psycopg2.OperationalError: Si no se puede establecer la conexión.
+        ValueError: Si RDS_PASSWORD no está definida.
     """
-    if not os.getenv("RDS_PASSWORD"):
-        raise ValueError(
-            "RDS_PASSWORD environment variable is not set. "
-            "Configure it via environment variables or AWS Secrets Manager."
-        )
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        logger.info("Conectado a RDS PostgreSQL en host=%s", DB_CONFIG["host"])
-        return conn
-    except psycopg2.OperationalError:
-        logger.exception("Error al conectar a RDS en host=%s", DB_CONFIG["host"])
-        raise
+    password = os.environ.get("RDS_PASSWORD")
+    if not password:
+        raise ValueError("RDS_PASSWORD no está definida.")
+    host = os.getenv("RDS_HOST", "localhost")
+    port = os.getenv("RDS_PORT", "5432")
+    dbname = os.getenv("RDS_DBNAME", "forecasting")
+    user = os.getenv("RDS_USER", "postgres")
+    url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{dbname}"
+    engine = create_engine(url, pool_pre_ping=True)
+    logger.info("Engine SQLAlchemy creado — host=%s", host)
+    return engine
 
 
-def fetch_query(query: str, params: tuple | None = None) -> list[dict[str, Any]]:
-    """Ejecuta un SELECT y retorna los resultados como lista de diccionarios.
+def fetch_query(
+    query: str, params: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Ejecuta un SELECT y retorna resultados como lista de diccionarios.
 
     Args:
-        query: Sentencia SQL SELECT.
-        params: Parámetros de la consulta.
+        query: SQL SELECT con parámetros ``:nombre``.
+        params: Diccionario de parámetros.
 
     Returns:
         Lista de filas como diccionarios.
-
-    Raises:
-        psycopg2.Error: Si la consulta falla.
     """
-    with get_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, params)
-            results = cur.fetchall()
-            logger.info("Consulta SELECT ejecutada, filas=%d", len(results))
-            return list(results)
+    with _get_engine().connect() as conn:
+        rows = conn.execute(text(query), params or {}).mappings().all()
+        logger.info("SELECT ejecutado — %d filas", len(rows))
+        return [dict(r) for r in rows]
 
 
-def execute_query(query: str, params: tuple | None = None) -> None:
-    """Ejecuta una sentencia INSERT/UPDATE/DELETE.
+def execute_query(query: str, params: dict[str, Any] | None = None) -> None:
+    """Ejecuta INSERT/UPDATE/DELETE con commit automático.
 
     Args:
-        query: Sentencia SQL.
-        params: Parámetros de la consulta.
-
-    Raises:
-        psycopg2.Error: Si la consulta falla.
+        query: SQL con parámetros ``:nombre``.
+        params: Diccionario de parámetros.
     """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            conn.commit()
-            logger.info("Consulta de escritura ejecutada y confirmada correctamente")
+    with _get_engine().begin() as conn:
+        conn.execute(text(query), params or {})
+        logger.info("Escritura ejecutada y confirmada")

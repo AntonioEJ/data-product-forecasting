@@ -66,11 +66,12 @@ Kaggle / S3 (raw)
 | Gestión de deps | uv + lockfile | Instalaciones deterministas y rápidas |
 | Linting/formato | Ruff | PEP 8, imports, docstrings, bugbear — un solo tool |
 | Frontend | Streamlit | Prototipos rápidos para usuarios de negocio |
-| Cloud | AWS (S3, Glue, Athena, RDS, ECS, ECR, Secrets Manager) | Stack enterprise estándar |
+| Cloud | AWS (S3, Glue, Athena, RDS, ECS Fargate, ECR, Secrets Manager) | Stack enterprise estándar |
 | ML | LightGBM, scikit-learn | Modelos de gradient boosting para series de tiempo |
 | ETL | pandas, pyarrow, awswrangler | Lectura/escritura eficiente a S3/Glue |
+| DB | SQLAlchemy + psycopg (v3) | Connection pooling, ORM-ready, sin compilación C |
 | Contenedores | Docker | Reproducibilidad entre local y cloud |
-| IaC | CloudFormation | Infraestructura versionada |
+| IaC | CloudFormation | Infraestructura versionada (RDS + ECS + ALB) |
 | CI | GitHub Actions | Lint + format + score en cada PR |
 
 ## Estructura del repositorio
@@ -95,6 +96,8 @@ Kaggle / S3 (raw)
 ├── backend/                    
 ├── config/                     
 ├── config.py                   → Rutas y parámetros centralizados (PathsConfig, ModelConfig)
+├── .streamlit/
+│   └── config.toml             → Config Streamlit (headless, puerto 8501)
 ├── data/
 │   ├── inference/
 │   ├── predictions/
@@ -113,7 +116,7 @@ Kaggle / S3 (raw)
 │   │   ├── shops_en.csv
 │   │   ├── shops.csv
 │   │   └── test.csv
-│   └── rds.py                  → Capa de acceso a PostgreSQL
+│   └── rds.py                  → Capa de acceso a RDS (SQLAlchemy + psycopg3)
 ├── docs/
 │   ├── arquitectura.md
 │   ├── erd.md
@@ -138,7 +141,8 @@ Kaggle / S3 (raw)
 ├── services/                   → Lógica de negocio (pendiente)
 ├── utils/
 │   └── logging.py              → Logging centralizado (CloudWatch-ready)
-├── Dockerfile                  → Imagen principal (Streamlit app)
+├── .dockerignore               → Exclusiones del build Docker
+├── Dockerfile                  → Imagen Streamlit para Fargate (health check incluido)
 ├── pyproject.toml              → Dependencias, config de ruff y pytest
 └── uv.lock                     → Lockfile determinista
 ```
@@ -289,16 +293,103 @@ python etl/gold.py --bucket <tu-bucket>
 | **Modularidad** | Patrón `validate_file` → `upload_table` → `main` en cada script. Funciones con responsabilidad única. |
 | **Cifras de control** | Cada script imprime al final: tablas procesadas, filas totales, tiempo por tabla y tiempo total. |
 | **CLI** | `argparse` con `--bucket` (y `--data-dir` en Bronze). Documentación disponible con `--help`. |
-| **Pylint** | Bronze: 9.77/10 · Silver: 9.75/10 · Gold: 9.64/10 |
+| **Pylint** | Bronze: 9.78/10 · Silver: 10.00/10 · Gold: 9.82/10 · Features: 10.00/10 · ETL: 9.74/10 |
 
 ### Infraestructura (CloudFormation)
+
+`infra/core.yaml` despliega toda la infraestructura en un solo stack:
+- RDS PostgreSQL 17 (db.t3.micro, encrypted, read replica opcional)
+- Secrets Manager con credenciales completas
+- ECR repository
+- ECS Fargate cluster + service + task definition
+- ALB internet-facing con health check en `/_stcore/health`
+- IAM roles con least privilege (secrets scoped por ARN)
+- CloudWatch log group
+
+#### Paso 1 — Crear el repositorio ECR
+
+```bash
+aws ecr create-repository \
+    --repository-name forecast-app-ecr \
+    --region us-east-1
+```
+
+Guarda el URI del repositorio:
+
+```bash
+ECR_URI=$(aws ecr describe-repositories \
+    --repository-names forecast-app-ecr \
+    --region us-east-1 \
+    --query "repositories[0].repositoryUri" \
+    --output text)
+
+echo "ECR URI: $ECR_URI"
+```
+
+#### Paso 2 — Build y push de la imagen
+
+```bash
+# Autenticarse en ECR
+aws ecr get-login-password --region us-east-1 | \
+    docker login --username AWS --password-stdin \
+    "$(aws sts get-caller-identity --query Account --output text).dkr.ecr.us-east-1.amazonaws.com"
+
+# Build y push
+docker build -t "${ECR_URI}:latest" .
+docker push "${ECR_URI}:latest"
+```
+
+#### Paso 3 — Obtener VPC y subnets
+
+```bash
+VPC_ID=$(aws ec2 describe-vpcs \
+    --filters "Name=isDefault,Values=true" \
+    --query "Vpcs[0].VpcId" \
+    --output text --region us-east-1)
+
+SUBNET_IDS=$(aws ec2 describe-subnets \
+    --filters "Name=vpc-id,Values=${VPC_ID}" "Name=defaultForAz,Values=true" \
+    --query "Subnets[*].SubnetId" \
+    --output text --region us-east-1 | tr '\t' ',')
+
+echo "VPC:     ${VPC_ID}"
+echo "Subnets: ${SUBNET_IDS}"
+```
+
+#### Paso 4 — Desplegar el stack
 
 ```bash
 aws cloudformation deploy \
     --template-file infra/core.yaml \
     --stack-name forecasting-stack \
-    --parameter-overrides DBUser=<usuario> DBPassword=<password> \
-    --capabilities CAPABILITY_NAMED_IAM
+    --capabilities CAPABILITY_NAMED_IAM \
+    --parameter-overrides \
+        VpcId="${VPC_ID}" \
+        SubnetIds="${SUBNET_IDS}" \
+        ImageUri="${ECR_URI}:latest" \
+        ServiceName="forecast-app" \
+        DBUsername=postgres \
+        DBPassword=<password> \
+    --region us-east-1
+```
+
+CloudFormation crea todos los recursos en orden y reporta `CREATE_COMPLETE` al terminar (~3–5 minutos).
+
+#### Paso 5 — Verificar el despliegue
+
+```bash
+# Estado del stack
+aws cloudformation describe-stacks \
+    --stack-name forecasting-stack \
+    --query "Stacks[0].StackStatus" \
+    --output text --region us-east-1
+# Esperado: CREATE_COMPLETE
+
+# Obtener la URL de la app
+aws cloudformation describe-stacks \
+    --stack-name forecasting-stack \
+    --query "Stacks[0].Outputs[?OutputKey=='AppURL'].OutputValue" \
+    --output text --region us-east-1
 ```
 
 ## Validación de código
@@ -315,17 +406,16 @@ uv run pytest -v                # tests
 - **Logging estructurado**: formato compatible con CloudWatch, timestamps UTC, hostname como contexto. Sin `print()`.
 - **Modularidad del ETL**: descarga, limpieza, feature engineering y persistencia en funciones separadas.
 - **Reproducibilidad**: `uv.lock` + `pyproject.toml` + `--frozen` en Docker y CI. Sin instalaciones ad-hoc.
-- **Seguridad**: credenciales vía env vars o Secrets Manager. Sin passwords en código. Queries parametrizadas en RDS.
+- **Seguridad**: credenciales vía env vars o Secrets Manager. Sin passwords en código. Queries parametrizadas con SQLAlchemy `text()` (`:nombre`).
 - **Rutas parametrizables**: `--raw-dir`, `--prep-dir`, `--artifacts-dir` permiten ejecutar en local, Docker y SageMaker sin cambiar código.
 - **CI automatizado**: GitHub Actions con format check, lint, ruff score y resumen por PR.
 
 ## Mejoras pendientes
 
 - Conectar páginas de Streamlit a RDS (actualmente usan datos mock).
-- Agregar polling de resultado en `gold.py` (Athena CTAS es asíncrono).
-- Extraer lógica compartida entre `bronze.py` y `silver.py` para eliminar duplicación.
 - Implementar training pipeline con tracking de experimentos.
 - Agregar tests de integración para las capas S3/Glue.
+- Configurar GitHub Actions para CI automático en PRs.
 
 ## Documentación adicional
 

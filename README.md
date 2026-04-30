@@ -335,7 +335,7 @@ aws ecr get-login-password --region us-east-1 | \
     "$(aws sts get-caller-identity --query Account --output text).dkr.ecr.us-east-1.amazonaws.com"
 
 # Build y push
-docker build -t "${ECR_URI}:latest" .
+docker build --network sagemaker -t "${ECR_URI}:latest" .
 docker push "${ECR_URI}:latest"
 ```
 

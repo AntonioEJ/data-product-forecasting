@@ -1,8 +1,8 @@
 
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  data-product-forecasting — Infraestructura completa.
-  Despliega RDS PostgreSQL 17, Secrets Manager, ECR, ECS Fargate con ALB,
+  data-product-forecasting - Infraestructura completa.
+  Despliega RDS PostgreSQL 17, Secrets Manager, ECS Fargate con ALB,
   IAM, CloudWatch y opcionalmente una read replica de RDS.
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ Resources:
           FromPort: 5432
           ToPort: 5432
           CidrIp: 0.0.0.0/0
-          Description: PostgreSQL — acceso público (SageMaker PublicInternetOnly)
+          Description: PostgreSQL - acceso publico (SageMaker PublicInternetOnly)
       Tags:
         - Key: app
           Value: !Ref ServiceName
@@ -254,7 +254,7 @@ Resources:
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub 'ALB HTTP — ${ServiceName}'
+      GroupDescription: !Sub 'ALB HTTP - ${ServiceName}'
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -266,14 +266,14 @@ Resources:
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub 'ECS tasks — ${ServiceName}'
+      GroupDescription: !Sub 'ECS tasks - ${ServiceName}'
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 8501
           ToPort: 8501
           SourceSecurityGroupId: !Ref ALBSecurityGroup
-          Description: Tráfico ALB → Streamlit
+          Description: Trafico ALB -> Streamlit
 
   # ═══════════════════════════════════════════════════════════════════════════
   # ALB + Target Group + Listener
@@ -392,7 +392,7 @@ Resources:
 Outputs:
 
   AppURL:
-    Description: URL pública de la aplicación Streamlit.
+    Description: URL publica de la aplicacion Streamlit.
     Value: !Sub 'http://${ALB.DNSName}'
 
   RdsEndpoint:

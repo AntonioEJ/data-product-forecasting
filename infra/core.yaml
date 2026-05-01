@@ -70,6 +70,11 @@ Parameters:
     MinLength: 8
     Description: Contraseña maestra de PostgreSQL (mínimo 8 caracteres).
 
+  S3BucketName:
+    Type: String
+    Default: ''
+    Description: Nombre del bucket S3 para forecasting. Si vacio, permite acceso a cualquier bucket.
+
   CreateReadReplica:
     Type: String
     Default: 'false'
@@ -82,6 +87,7 @@ Parameters:
 # ─────────────────────────────────────────────────────────────────────────────
 Conditions:
   EnableReadReplica: !Equals [!Ref CreateReadReplica, 'true']
+  HasS3Bucket: !Not [!Equals [!Ref S3BucketName, '']]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RESOURCES
@@ -114,15 +120,19 @@ Resources:
     Properties:
       GroupDescription: !Sub 'PostgreSQL access for ${ServiceName}'
       VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          CidrIp: 0.0.0.0/0
-          Description: PostgreSQL - acceso publico (SageMaker PublicInternetOnly)
       Tags:
         - Key: app
           Value: !Ref ServiceName
+
+  RdsIngressFromECS:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RdsSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref ECSSecurityGroup
+      Description: PostgreSQL from ECS tasks only
 
   RdsSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -217,7 +227,15 @@ Resources:
                   - s3:GetObject
                   - s3:PutObject
                   - s3:ListBucket
-                Resource: '*'
+                Resource:
+                  - !If
+                    - HasS3Bucket
+                    - !Sub 'arn:aws:s3:::${S3BucketName}'
+                    - '*'
+                  - !If
+                    - HasS3Bucket
+                    - !Sub 'arn:aws:s3:::${S3BucketName}/*'
+                    - '*'
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue

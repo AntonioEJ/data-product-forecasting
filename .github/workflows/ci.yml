@@ -43,19 +43,20 @@ jobs:
         run: uv sync --frozen --all-extras
 
       # ── 3. Formato ───────────────────────────────────────────────────────────
-      # Informativo: reporta archivos sin formatear sin bloquear el pipeline.
       - name: Ruff format check
-        run: uv run ruff format --check . || true
+        run: uv run ruff format --check .
 
       # ── 4. Lint ──────────────────────────────────────────────────────────────
-      # Informativo: reporta issues sin bloquear el pipeline.
       - name: Ruff lint
-        run: uv run ruff check . || true
+        run: uv run ruff check .
 
-      # ── 5. Score de calidad (informativo) ────────────────────────────────────
-      # No bloquea el pipeline pero reporta el número de issues en etl/.
-      # Útil para seguir la evolución de la deuda técnica en PRs.
+      # ── 5. Tests ─────────────────────────────────────────────────────────────
+      - name: Run tests
+        run: uv run pytest -v
+
+      # ── 6. Score de calidad (informativo) ────────────────────────────────────
       - name: Ruff score
+        if: always()
         run: |
           ERRORS=$(uv run ruff check etl/ --output-format=concise 2>/dev/null | grep -c "^etl/" || true)
           TOTAL=$(find etl/ -name "*.py" | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
@@ -64,10 +65,9 @@ jobs:
           echo "  Lines of code (etl/): $TOTAL"
           echo "──────────────────────────────────"
 
-      # ── 6. Docstrings (informativo) ──────────────────────────────────────────
-      # Reporta cobertura de docstrings sin bloquear.
-      # Cambiar `|| true` a `` para hacerlo bloqueante cuando el proyecto madure.
+      # ── 7. Docstrings (informativo) ──────────────────────────────────────────
       - name: Docstring coverage (non-blocking)
+        if: always()
         run: uv run ruff check . --select D || true
 
       # ── 8. Resumen del job ───────────────────────────────────────────────────

@@ -306,90 +306,110 @@ python etl/gold.py --bucket <tu-bucket>
 - IAM roles con least privilege (secrets scoped por ARN)
 - CloudWatch log group
 
-#### Paso 1 — Crear el repositorio ECR
+#### Paso 1 — Build local de la imagen
 
 ```bash
-aws ecr create-repository \
-    --repository-name forecast-app-ecr \
-    --region us-east-1
+docker build --network sagemaker -t data-product-forecast:local .
 ```
 
-Guarda el URI del repositorio:
+#### Paso 2 — Obtener Account ID, región y URI de ECR
 
 ```bash
-ECR_URI=$(aws ecr describe-repositories \
-    --repository-names forecast-app-ecr \
-    --region us-east-1 \
-    --query "repositories[0].repositoryUri" \
-    --output text)
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGION=us-east-1
+ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/forecast-app-ecr"
 
 echo "ECR URI: $ECR_URI"
 ```
 
-#### Paso 2 — Build y push de la imagen
+#### Paso 3 — Crear el repositorio ECR (solo la primera vez)
 
 ```bash
-# Autenticarse en ECR
-aws ecr get-login-password --region us-east-1 | \
-    docker login --username AWS --password-stdin \
-    "$(aws sts get-caller-identity --query Account --output text).dkr.ecr.us-east-1.amazonaws.com"
+aws ecr create-repository --repository-name forecast-app-ecr --region $REGION
+```
 
-# Build y push
-docker build --network sagemaker -t "${ECR_URI}:latest" .
+> Si el repositorio ya existe y el stack falló con `AlreadyExists`, elimina el stack primero:
+> ```bash
+> aws cloudformation delete-stack --stack-name forecast-app --region $REGION
+> aws cloudformation wait stack-delete-complete --stack-name forecast-app --region $REGION
+> ```
+
+#### Paso 4 — Autenticar y subir la imagen a ECR
+
+```bash
+# Login en ECR
+aws ecr get-login-password --region $REGION | \
+    docker login --username AWS --password-stdin \
+    "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
+
+# Retag al nombre del repo ECR y push
+docker tag data-product-forecast:local "${ECR_URI}:latest"
 docker push "${ECR_URI}:latest"
 ```
 
-#### Paso 3 — Obtener VPC y subnets
+#### Paso 5 — Obtener VPC y subnets
 
 ```bash
 VPC_ID=$(aws ec2 describe-vpcs \
     --filters "Name=isDefault,Values=true" \
     --query "Vpcs[0].VpcId" \
-    --output text --region us-east-1)
+    --output text --region $REGION)
 
 SUBNET_IDS=$(aws ec2 describe-subnets \
-    --filters "Name=vpc-id,Values=${VPC_ID}" "Name=defaultForAz,Values=true" \
+    --filters "Name=vpc-id,Values=${VPC_ID}" \
     --query "Subnets[*].SubnetId" \
-    --output text --region us-east-1 | tr '\t' ',')
+    --output text --region $REGION | tr '\t' ',')
 
 echo "VPC:     ${VPC_ID}"
 echo "Subnets: ${SUBNET_IDS}"
 ```
 
-#### Paso 4 — Desplegar el stack
+#### Paso 6 — Desplegar el stack
 
 ```bash
 aws cloudformation deploy \
     --template-file infra/core.yaml \
-    --stack-name forecasting-stack \
+    --stack-name forecast-app \
     --capabilities CAPABILITY_NAMED_IAM \
+    --region $REGION \
     --parameter-overrides \
         VpcId="${VPC_ID}" \
         SubnetIds="${SUBNET_IDS}" \
         ImageUri="${ECR_URI}:latest" \
-        ServiceName="forecast-app" \
-        DBUsername=postgres \
-        DBPassword=<password> \
-    --region us-east-1
+        DBPassword="TuPasswordSeguro123!" \
+    --no-fail-on-empty-changeset
 ```
 
-CloudFormation crea todos los recursos en orden y reporta `CREATE_COMPLETE` al terminar (~3–5 minutos).
+CloudFormation crea todos los recursos en orden y reporta `CREATE_COMPLETE` al terminar (~8–10 minutos, RDS es lo que más tarda).
 
-#### Paso 5 — Verificar el despliegue
+#### Paso 7 — Verificar el despliegue
 
 ```bash
 # Estado del stack
 aws cloudformation describe-stacks \
-    --stack-name forecasting-stack \
+    --stack-name forecast-app \
     --query "Stacks[0].StackStatus" \
-    --output text --region us-east-1
+    --output text --region $REGION
 # Esperado: CREATE_COMPLETE
 
 # Obtener la URL de la app
 aws cloudformation describe-stacks \
-    --stack-name forecasting-stack \
+    --stack-name forecast-app \
     --query "Stacks[0].Outputs[?OutputKey=='AppURL'].OutputValue" \
-    --output text --region us-east-1
+    --output text --region $REGION
+```
+
+#### Re-deploy de imagen (actualizaciones futuras)
+
+```bash
+docker build --network sagemaker -t data-product-forecast:local . \
+  && docker tag data-product-forecast:local "${ECR_URI}:latest" \
+  && docker push "${ECR_URI}:latest" \
+  && aws ecs update-service \
+       --cluster forecast-app-Cluster \
+       --service forecast-app-Service \
+       --force-new-deployment \
+       --region $REGION
 ```
 
 ## Validación de código

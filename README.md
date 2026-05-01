@@ -132,7 +132,6 @@ Kaggle / S3 (raw)
 │   ├── silver.py               → Datos limpios → S3/Glue
 │   └── test/
 │       └── test_prep.py        → Tests de validación de outputs
-├── frontend/                   → (pendiente)
 ├── inference/                  → (pendiente)
 ├── infra/
 │   └── core.yaml               → CloudFormation stack
@@ -298,98 +297,166 @@ python etl/gold.py --bucket <tu-bucket>
 ### Infraestructura (CloudFormation)
 
 `infra/core.yaml` despliega toda la infraestructura en un solo stack:
-- RDS PostgreSQL 17 (db.t3.micro, encrypted, read replica opcional)
-- Secrets Manager con credenciales completas
-- ECR repository
+- RDS PostgreSQL 17 (db.t3.micro, encrypted, free tier)
+- Secrets Manager con credenciales
 - ECS Fargate cluster + service + task definition
 - ALB internet-facing con health check en `/_stcore/health`
 - IAM roles con least privilege (secrets scoped por ARN)
 - CloudWatch log group
 
-#### Paso 1 — Crear el repositorio ECR
+> **Nota:** El build de Docker se hace desde SageMaker. El deploy de CloudFormation
+> se hace desde **CloudShell** o la consola de CloudFormation (el rol de SageMaker no tiene
+> permisos de CloudFormation/ELB/IAM).
+
+#### Paso 1 — Build de la imagen (SageMaker)
 
 ```bash
-aws ecr create-repository \
-    --repository-name forecast-app-ecr \
-    --region us-east-1
+cd ~/data-product-forecasting
+git pull origin feature/etl-processing
+docker build --network sagemaker -t data-product-forecast:local .
 ```
 
-Guarda el URI del repositorio:
+#### Paso 2 — Crear repo ECR y obtener URI (SageMaker)
 
 ```bash
+REGION=us-east-1
+aws ecr create-repository --repository-name forecast-app-ecr --region $REGION 2>/dev/null || true
+
 ECR_URI=$(aws ecr describe-repositories \
     --repository-names forecast-app-ecr \
-    --region us-east-1 \
+    --region $REGION \
     --query "repositories[0].repositoryUri" \
     --output text)
 
 echo "ECR URI: $ECR_URI"
 ```
 
-#### Paso 2 — Build y push de la imagen
+#### Paso 3 — Login, tag y push a ECR (SageMaker)
 
 ```bash
-# Autenticarse en ECR
-aws ecr get-login-password --region us-east-1 | \
-    docker login --username AWS --password-stdin \
-    "$(aws sts get-caller-identity --query Account --output text).dkr.ecr.us-east-1.amazonaws.com"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-# Build y push
-docker build --network sagemaker -t "${ECR_URI}:latest" .
+aws ecr get-login-password --region $REGION | \
+    docker login --username AWS --password-stdin \
+    "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
+
+docker tag data-product-forecast:local "${ECR_URI}:latest"
 docker push "${ECR_URI}:latest"
 ```
 
-#### Paso 3 — Obtener VPC y subnets
+#### Paso 4 — Obtener VPC y subnets (CloudShell)
+
+Abrir **CloudShell** (icono `>_` en la barra superior de la consola AWS):
 
 ```bash
+git clone https://github.com/AntonioEJ/data-product-forecasting.git
+cd data-product-forecasting
+git checkout feature/etl-processing
+
+REGION=us-east-1
+ECR_URI="529236942598.dkr.ecr.${REGION}.amazonaws.com/forecast-app-ecr"
+
 VPC_ID=$(aws ec2 describe-vpcs \
     --filters "Name=isDefault,Values=true" \
     --query "Vpcs[0].VpcId" \
-    --output text --region us-east-1)
+    --output text --region $REGION)
 
 SUBNET_IDS=$(aws ec2 describe-subnets \
-    --filters "Name=vpc-id,Values=${VPC_ID}" "Name=defaultForAz,Values=true" \
+    --filters "Name=vpc-id,Values=${VPC_ID}" \
     --query "Subnets[*].SubnetId" \
-    --output text --region us-east-1 | tr '\t' ',')
+    --output text --region $REGION | tr '\t' ',')
 
 echo "VPC:     ${VPC_ID}"
 echo "Subnets: ${SUBNET_IDS}"
 ```
 
-#### Paso 4 — Desplegar el stack
+#### Paso 5 — Desplegar el stack (CloudShell)
 
 ```bash
+# Limpiar stack fallido si existe
+aws cloudformation delete-stack --stack-name forecast-app --region $REGION 2>/dev/null
+aws cloudformation wait stack-delete-complete --stack-name forecast-app --region $REGION 2>/dev/null
+aws logs delete-log-group --log-group-name /ecs/forecast-app --region $REGION 2>/dev/null || true
+
+# Desplegar
 aws cloudformation deploy \
     --template-file infra/core.yaml \
-    --stack-name forecasting-stack \
+    --stack-name forecast-app \
     --capabilities CAPABILITY_NAMED_IAM \
+    --region $REGION \
     --parameter-overrides \
         VpcId="${VPC_ID}" \
         SubnetIds="${SUBNET_IDS}" \
         ImageUri="${ECR_URI}:latest" \
-        ServiceName="forecast-app" \
-        DBUsername=postgres \
-        DBPassword=<password> \
-    --region us-east-1
+        DBPassword="TuPasswordSeguro123!"
 ```
 
-CloudFormation crea todos los recursos en orden y reporta `CREATE_COMPLETE` al terminar (~3–5 minutos).
+CloudFormation crea todos los recursos (~8-10 minutos, RDS es lo que mas tarda).
 
-#### Paso 5 — Verificar el despliegue
+#### Paso 6 — Verificar el despliegue (CloudShell)
 
 ```bash
 # Estado del stack
 aws cloudformation describe-stacks \
-    --stack-name forecasting-stack \
+    --stack-name forecast-app \
     --query "Stacks[0].StackStatus" \
-    --output text --region us-east-1
+    --output text --region $REGION
 # Esperado: CREATE_COMPLETE
 
 # Obtener la URL de la app
 aws cloudformation describe-stacks \
-    --stack-name forecasting-stack \
+    --stack-name forecast-app \
     --query "Stacks[0].Outputs[?OutputKey=='AppURL'].OutputValue" \
-    --output text --region us-east-1
+    --output text --region $REGION
+# http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
+```
+
+**App URL:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
+
+#### Re-deploy de imagen (actualizaciones futuras)
+
+Desde SageMaker:
+```bash
+docker build --network sagemaker -t data-product-forecast:local . \
+  && docker tag data-product-forecast:local "${ECR_URI}:latest" \
+  && docker push "${ECR_URI}:latest"
+```
+
+Desde CloudShell:
+```bash
+aws ecs update-service \
+    --cluster forecast-app-cluster \
+    --service forecast-app \
+    --force-new-deployment \
+    --region us-east-1
+```
+
+#### Paso 7 — Validar conexion a RDS (SageMaker)
+
+```bash
+# Instalar driver de Postgres (boto3 ya viene en SageMaker)
+pip install "psycopg[binary]"
+
+# El script obtiene las credenciales automaticamente desde Secrets Manager
+python scripts/check_rds.py
+```
+
+Salida esperada:
+
+```
+Credenciales obtenidas desde Secrets Manager (forecast-app/rds/credentials)
+Conectando a forecast-app-db.cgfw8ius6eld.us-east-1.rds.amazonaws.com:5432/forecasting como postgres ...
+OK - Conexion exitosa
+    PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 12.4.0, 64-bit
+
+Base de datos vacia (sin tablas de usuario)
+```
+
+#### Eliminar el stack
+
+```bash
+aws cloudformation delete-stack --stack-name forecast-app --region us-east-1
+aws cloudformation wait stack-delete-complete --stack-name forecast-app --region us-east-1
 ```
 
 ## Validación de código

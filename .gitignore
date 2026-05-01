@@ -21,6 +21,8 @@ venv/
 
 *.parquet
 *.csv
+*.pkl
+*.joblib
 
 # ----------------------------
 # Logs

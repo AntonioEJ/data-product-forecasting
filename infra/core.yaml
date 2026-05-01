@@ -154,7 +154,7 @@ Resources:
       DBSubnetGroupName: !Ref RdsSubnetGroup
       VPCSecurityGroups:
         - !Ref RdsSecurityGroup
-      BackupRetentionPeriod: 1
+      BackupRetentionPeriod: 0
       StorageEncrypted: true
       AutoMinorVersionUpgrade: true
 

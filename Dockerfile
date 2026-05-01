@@ -12,16 +12,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir \
-    streamlit \
-    pandas \
-    numpy \
-    scikit-learn \
-    great-tables
+# Install uv for deterministic dependency resolution
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Install dependencies from lockfile (reproducible)
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-editable
 
 COPY .streamlit/ .streamlit/
-COPY frontend/ frontend/
+COPY app/ app/
 COPY backend/ backend/
+COPY config.py config.py
+COPY utils/ utils/
 COPY artifacts/ artifacts/
 COPY data/predictions/ data/predictions/
 
@@ -30,7 +32,7 @@ EXPOSE 8501
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8501/_stcore/health || exit 1
 
-CMD ["streamlit", "run", "frontend/app.py", \
+CMD ["uv", "run", "streamlit", "run", "app/main.py", \
      "--server.port=8501", \
      "--server.address=0.0.0.0", \
      "--server.headless=true"]

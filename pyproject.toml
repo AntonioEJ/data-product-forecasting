@@ -50,7 +50,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.pytest.ini_options]
-testpaths = ["etl/test"]
+testpaths = ["etl/test", "tests"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

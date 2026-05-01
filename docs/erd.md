@@ -1,78 +1,66 @@
 # Esquema Relacional (ERD) — RDS PostgreSQL
 
-## Descripción General
-Modelo relacional normalizado para soportar las operaciones del producto de datos de pronóstico de ventas. Incluye productos, tiendas, predicciones, métricas, trabajos batch y feedback de negocio.
+## Descripción general
+
+Modelo relacional para el producto de forecasting de demanda. Cinco tablas implementadas en `db/schema.py`; la tabla `feedback` queda pendiente de definir requisitos.
 
 ## Diagrama ERD (Mermaid)
 
 ```mermaid
 erDiagram
-    products ||--o{ predictions : "has"
-    stores ||--o{ predictions : "has"
-    predictions }o--|| metrics : "evaluated by"
-    batch_jobs ||--o{ predictions : "exports"
-    products ||--o{ feedback : "flagged in"
-    stores ||--o{ feedback : "flagged in"
-    feedback }o--|| users : "submitted by"
+    products ||--o{ predictions : "item_id"
+    shops ||--o{ predictions : "shop_id"
 
     products {
-        int product_id PK
-        string name
-        string category
-        ...
+        int item_id PK
+        string(500) item_name
+        string(200) category_name
     }
-    stores {
-        int store_id PK
-        string name
-        string location
-        ...
+
+    shops {
+        int shop_id PK
+        string(500) shop_name
+        string(200) city
     }
+
     predictions {
-        int prediction_id PK
-        int product_id FK
-        int store_id FK
+        int id PK
+        int shop_id FK
+        int item_id FK
         date forecast_date
-        float predicted_value
-        float actual_value (nullable)
-        int batch_job_id FK (nullable)
-        timestamp created_at
+        float predicted_units
+        float actual_units
     }
+
     metrics {
-        int metric_id PK
-        int prediction_id FK
-        string metric_name
-        float metric_value
+        int id PK
+        string(200) category_name
+        float mae
+        float rmse
+        float mae_naive
+        float rmse_naive
+        datetime computed_at
     }
+
     batch_jobs {
-        int batch_job_id PK
-        string status
-        string export_scope
-        string s3_url
-        timestamp requested_at
-        timestamp completed_at (nullable)
+        int id PK
+        string(100) filter_type
+        string(500) filter_value
+        string(1000) s3_url
+        string(50) status
+        datetime created_at
     }
+
     feedback {
-        int feedback_id PK
-        int product_id FK
-        int store_id FK
-        int user_id FK
-        string comment
-        string status
-        timestamp submitted_at
-    }
-    users {
-        int user_id PK
-        string name
-        string email
+        int id PK
+        "TODO: schema pendiente, depende de definicion de requisitos de la vista 4"
     }
 ```
 
-## Notas de Modelado
-- Todas las claves primarias (PK) son enteros autoincrementales.
-- Las claves foráneas (FK) aseguran integridad referencial.
-- Las tablas pueden extenderse con campos adicionales según necesidades del negocio.
-- Los nombres y tipos de datos siguen convenciones claras y normalizadas.
+## Notas
 
----
-
-Este modelo soporta consultas eficientes, integridad de datos y escalabilidad para futuras extensiones.
+- `metrics` agrega errores por `category_name`, no por predicción individual. El campo `computed_at` permite rastrear cuándo se calculó cada snapshot de métricas.
+- `batch_jobs` registra solicitudes de exportación desde la vista 2. `filter_type` y `filter_value` indican el alcance (categoría, tienda, catálogo completo).
+- `actual_units` en `predictions` es nullable: se rellena cuando llega el ground truth.
+- `feedback` queda pendiente de acordar con Toño (vista 4).
+- PKs autoincrementales salvo `item_id` y `shop_id`, que se preservan del dataset original de Kaggle.

@@ -408,7 +408,10 @@ aws cloudformation describe-stacks \
     --stack-name forecast-app \
     --query "Stacks[0].Outputs[?OutputKey=='AppURL'].OutputValue" \
     --output text --region $REGION
+# http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
 ```
+
+**App URL:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
 
 #### Re-deploy de imagen (actualizaciones futuras)
 

@@ -431,6 +431,27 @@ aws ecs update-service \
     --region us-east-1
 ```
 
+#### Paso 7 — Validar conexion a RDS (SageMaker)
+
+```bash
+# Instalar driver de Postgres (boto3 ya viene en SageMaker)
+pip install "psycopg[binary]"
+
+# El script obtiene las credenciales automaticamente desde Secrets Manager
+python scripts/check_rds.py
+```
+
+Salida esperada:
+
+```
+Credenciales obtenidas desde Secrets Manager (forecast-app/rds/credentials)
+Conectando a forecast-app-db.cgfw8ius6eld.us-east-1.rds.amazonaws.com:5432/forecasting como postgres ...
+OK - Conexion exitosa
+    PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 12.4.0, 64-bit
+
+Base de datos vacia (sin tablas de usuario)
+```
+
 #### Eliminar el stack
 
 ```bash

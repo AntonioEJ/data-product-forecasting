@@ -1,55 +1,21 @@
-"""Valida la conexion a RDS PostgreSQL.
+"""Valida la conexion a RDS PostgreSQL usando variables de entorno."""
 
-Modos de uso:
-  - SageMaker/ECS (recomendado): lee credenciales de AWS Secrets Manager automaticamente.
-  - Local: provee RDS_PASSWORD como variable de entorno.
-
-Uso local:
-    RDS_PASSWORD=<password> python scripts/check_rds.py
-
-Uso en SageMaker (sin variables de entorno):
-    python scripts/check_rds.py
-"""
-
-import json
 import os
 import sys
 
 import psycopg
 
-SECRET_NAME = "forecast-app/rds/credentials"
-REGION = "us-east-1"
-RDS_HOST_DEFAULT = "forecast-app-db.cgfw8ius6eld.us-east-1.rds.amazonaws.com"
-
-
-def _get_secret() -> dict:
-    """Obtiene las credenciales desde AWS Secrets Manager."""
-    import boto3
-    client = boto3.client("secretsmanager", region_name=REGION)
-    response = client.get_secret_value(SecretId=SECRET_NAME)
-    return json.loads(response["SecretString"])
-
 
 def main() -> None:
-    # Intentar obtener credenciales desde Secrets Manager (funciona en SageMaker/ECS)
-    secret: dict = {}
-    if not os.environ.get("RDS_PASSWORD"):
-        try:
-            secret = _get_secret()
-            print(f"Credenciales obtenidas desde Secrets Manager ({SECRET_NAME})")
-        except Exception as e:
-            print(f"No se pudo acceder a Secrets Manager: {e}")
-            print("Provee RDS_PASSWORD como variable de entorno.")
-            sys.exit(1)
-
-    host = os.environ.get("RDS_HOST") or secret.get("host", RDS_HOST_DEFAULT)
-    port = int(os.environ.get("RDS_PORT") or secret.get("port", 5432))
-    dbname = os.environ.get("RDS_DBNAME") or secret.get("dbname", "forecasting")
-    user = os.environ.get("RDS_USER") or secret.get("username", "postgres")
-    password = os.environ.get("RDS_PASSWORD") or secret.get("password", "")
+    host = os.environ.get("RDS_HOST", "forecast-app-db.cgfw8ius6eld.us-east-1.rds.amazonaws.com")
+    port = int(os.environ.get("RDS_PORT", "5432"))
+    dbname = os.environ.get("RDS_DBNAME", "forecasting")
+    user = os.environ.get("RDS_USER", "postgres")
+    password = os.environ.get("RDS_PASSWORD", "")
 
     if not password:
-        print("ERROR: No se encontro contrasena en Secrets Manager ni en RDS_PASSWORD.")
+        print("ERROR: RDS_PASSWORD no definida.")
+        print("Uso: RDS_PASSWORD=<tu_password> uv run python scripts/check_rds.py")
         sys.exit(1)
 
     print(f"Conectando a {host}:{port}/{dbname} como {user} ...")

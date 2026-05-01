@@ -1,8 +1,8 @@
 
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  data-product-forecasting — Infraestructura completa.
-  Despliega RDS PostgreSQL 17, Secrets Manager, ECR, ECS Fargate con ALB,
+  data-product-forecasting - Infraestructura completa.
+  Despliega RDS PostgreSQL 17, Secrets Manager, ECS Fargate con ALB,
   IAM, CloudWatch y opcionalmente una read replica de RDS.
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +70,11 @@ Parameters:
     MinLength: 8
     Description: Contraseña maestra de PostgreSQL (mínimo 8 caracteres).
 
+  S3BucketName:
+    Type: String
+    Default: ''
+    Description: Nombre del bucket S3 para forecasting. Si vacio, permite acceso a cualquier bucket.
+
   CreateReadReplica:
     Type: String
     Default: 'false'
@@ -82,6 +87,7 @@ Parameters:
 # ─────────────────────────────────────────────────────────────────────────────
 Conditions:
   EnableReadReplica: !Equals [!Ref CreateReadReplica, 'true']
+  HasS3Bucket: !Not [!Equals [!Ref S3BucketName, '']]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RESOURCES
@@ -114,15 +120,19 @@ Resources:
     Properties:
       GroupDescription: !Sub 'PostgreSQL access for ${ServiceName}'
       VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          CidrIp: 0.0.0.0/0
-          Description: PostgreSQL — acceso público (SageMaker PublicInternetOnly)
       Tags:
         - Key: app
           Value: !Ref ServiceName
+
+  RdsIngressFromECS:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RdsSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref ECSSecurityGroup
+      Description: PostgreSQL from ECS tasks only
 
   RdsSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -217,7 +227,15 @@ Resources:
                   - s3:GetObject
                   - s3:PutObject
                   - s3:ListBucket
-                Resource: '*'
+                Resource:
+                  - !If
+                    - HasS3Bucket
+                    - !Sub 'arn:aws:s3:::${S3BucketName}'
+                    - '*'
+                  - !If
+                    - HasS3Bucket
+                    - !Sub 'arn:aws:s3:::${S3BucketName}/*'
+                    - '*'
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
@@ -254,7 +272,7 @@ Resources:
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub 'ALB HTTP — ${ServiceName}'
+      GroupDescription: !Sub 'ALB HTTP - ${ServiceName}'
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -266,14 +284,14 @@ Resources:
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub 'ECS tasks — ${ServiceName}'
+      GroupDescription: !Sub 'ECS tasks - ${ServiceName}'
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 8501
           ToPort: 8501
           SourceSecurityGroupId: !Ref ALBSecurityGroup
-          Description: Tráfico ALB → Streamlit
+          Description: Trafico ALB -> Streamlit
 
   # ═══════════════════════════════════════════════════════════════════════════
   # ALB + Target Group + Listener
@@ -392,7 +410,7 @@ Resources:
 Outputs:
 
   AppURL:
-    Description: URL pública de la aplicación Streamlit.
+    Description: URL publica de la aplicacion Streamlit.
     Value: !Sub 'http://${ALB.DNSName}'
 
   RdsEndpoint:

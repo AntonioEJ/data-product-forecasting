@@ -132,7 +132,6 @@ Kaggle / S3 (raw)
 │   ├── silver.py               → Datos limpios → S3/Glue
 │   └── test/
 │       └── test_prep.py        → Tests de validación de outputs
-├── frontend/                   → (pendiente)
 ├── inference/                  → (pendiente)
 ├── infra/
 │   └── core.yaml               → CloudFormation stack

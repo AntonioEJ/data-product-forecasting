@@ -114,31 +114,20 @@ Resources:
           "engine":   "postgres"
         }
 
-  RdsSecretAttachment:
-    Type: AWS::SecretsManager::SecretTargetAttachment
-    Properties:
-      SecretId: !Ref RdsCredentialsSecret
-      TargetId: !Ref RdsInstance
-      TargetType: AWS::RDS::DBInstance
-
   RdsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: !Sub 'PostgreSQL access for ${ServiceName}'
       VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+          Description: PostgreSQL public access (SageMaker PublicInternetOnly)
       Tags:
         - Key: app
           Value: !Ref ServiceName
-
-  RdsIngressFromECS:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref RdsSecurityGroup
-      IpProtocol: tcp
-      FromPort: 5432
-      ToPort: 5432
-      SourceSecurityGroupId: !Ref ECSSecurityGroup
-      Description: PostgreSQL from ECS tasks only
 
   RdsSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -165,10 +154,9 @@ Resources:
       DBSubnetGroupName: !Ref RdsSubnetGroup
       VPCSecurityGroups:
         - !Ref RdsSecurityGroup
-      BackupRetentionPeriod: 0
+      BackupRetentionPeriod: 1
       StorageEncrypted: true
       AutoMinorVersionUpgrade: true
-      DeletionProtection: false
 
   RdsReadReplica:
     Type: AWS::RDS::DBInstance

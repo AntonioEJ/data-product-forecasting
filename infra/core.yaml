@@ -169,15 +169,6 @@ Resources:
       AutoMinorVersionUpgrade: true
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # ECR Repository
-  # ═══════════════════════════════════════════════════════════════════════════
-
-  ECRRepo:
-    Type: AWS::ECR::Repository
-    Properties:
-      RepositoryName: !Sub '${ServiceName}-ecr'
-
-  # ═══════════════════════════════════════════════════════════════════════════
   # IAM Roles
   # ═══════════════════════════════════════════════════════════════════════════
 
@@ -429,7 +420,7 @@ Outputs:
 
   ECRRepoUri:
     Description: URI del repositorio ECR.
-    Value: !GetAtt ECRRepo.RepositoryUri
+    Value: !Ref ImageUri
 
   ECSClusterName:
     Description: Nombre del cluster ECS.

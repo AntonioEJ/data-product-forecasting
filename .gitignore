@@ -54,3 +54,7 @@ venv/
 # Docker
 # ----------------------------
 *.tar
+
+# Auditorías y notas locales
+AUDIT*.md
+NOTES.md

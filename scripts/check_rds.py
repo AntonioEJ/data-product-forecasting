@@ -17,7 +17,7 @@ import sys
 
 import psycopg
 
-SECRET_NAME = "forecast-app-rds-credentials"
+SECRET_NAME = "forecast-app/rds/credentials"
 REGION = "us-east-1"
 RDS_HOST_DEFAULT = "forecast-app-db.cgfw8ius6eld.us-east-1.rds.amazonaws.com"
 

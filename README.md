@@ -297,58 +297,65 @@ python etl/gold.py --bucket <tu-bucket>
 ### Infraestructura (CloudFormation)
 
 `infra/core.yaml` despliega toda la infraestructura en un solo stack:
-- RDS PostgreSQL 17 (db.t3.micro, encrypted, read replica opcional)
-- Secrets Manager con credenciales completas
-- ECR repository
+- RDS PostgreSQL 17 (db.t3.micro, encrypted, free tier)
+- Secrets Manager con credenciales
 - ECS Fargate cluster + service + task definition
 - ALB internet-facing con health check en `/_stcore/health`
 - IAM roles con least privilege (secrets scoped por ARN)
 - CloudWatch log group
 
-#### Paso 1 — Build local de la imagen
+> **Nota:** El build de Docker se hace desde SageMaker. El deploy de CloudFormation
+> se hace desde **CloudShell** o la consola de CloudFormation (el rol de SageMaker no tiene
+> permisos de CloudFormation/ELB/IAM).
+
+#### Paso 1 — Build de la imagen (SageMaker)
 
 ```bash
+cd ~/data-product-forecasting
+git pull origin feature/etl-processing
 docker build --network sagemaker -t data-product-forecast:local .
 ```
 
-#### Paso 2 — Obtener Account ID, región y URI de ECR
+#### Paso 2 — Crear repo ECR y obtener URI (SageMaker)
 
 ```bash
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REGION=us-east-1
-ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/forecast-app-ecr"
+aws ecr create-repository --repository-name forecast-app-ecr --region $REGION 2>/dev/null || true
+
+ECR_URI=$(aws ecr describe-repositories \
+    --repository-names forecast-app-ecr \
+    --region $REGION \
+    --query "repositories[0].repositoryUri" \
+    --output text)
 
 echo "ECR URI: $ECR_URI"
 ```
 
-#### Paso 3 — Crear el repositorio ECR (solo la primera vez)
+#### Paso 3 — Login, tag y push a ECR (SageMaker)
 
 ```bash
-aws ecr create-repository --repository-name forecast-app-ecr --region $REGION
-```
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
-> Si el repositorio ya existe y el stack falló con `AlreadyExists`, elimina el stack primero:
-> ```bash
-> aws cloudformation delete-stack --stack-name forecast-app --region $REGION
-> aws cloudformation wait stack-delete-complete --stack-name forecast-app --region $REGION
-> ```
-
-#### Paso 4 — Autenticar y subir la imagen a ECR
-
-```bash
-# Login en ECR
 aws ecr get-login-password --region $REGION | \
     docker login --username AWS --password-stdin \
     "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
 
-# Retag al nombre del repo ECR y push
 docker tag data-product-forecast:local "${ECR_URI}:latest"
 docker push "${ECR_URI}:latest"
 ```
 
-#### Paso 5 — Obtener VPC y subnets
+#### Paso 4 — Obtener VPC y subnets (CloudShell)
+
+Abrir **CloudShell** (icono `>_` en la barra superior de la consola AWS):
 
 ```bash
+git clone https://github.com/AntonioEJ/data-product-forecasting.git
+cd data-product-forecasting
+git checkout feature/etl-processing
+
+REGION=us-east-1
+ECR_URI="529236942598.dkr.ecr.${REGION}.amazonaws.com/forecast-app-ecr"
+
 VPC_ID=$(aws ec2 describe-vpcs \
     --filters "Name=isDefault,Values=true" \
     --query "Vpcs[0].VpcId" \
@@ -363,9 +370,15 @@ echo "VPC:     ${VPC_ID}"
 echo "Subnets: ${SUBNET_IDS}"
 ```
 
-#### Paso 6 — Desplegar el stack
+#### Paso 5 — Desplegar el stack (CloudShell)
 
 ```bash
+# Limpiar stack fallido si existe
+aws cloudformation delete-stack --stack-name forecast-app --region $REGION 2>/dev/null
+aws cloudformation wait stack-delete-complete --stack-name forecast-app --region $REGION 2>/dev/null
+aws logs delete-log-group --log-group-name /ecs/forecast-app --region $REGION 2>/dev/null || true
+
+# Desplegar
 aws cloudformation deploy \
     --template-file infra/core.yaml \
     --stack-name forecast-app \
@@ -375,13 +388,12 @@ aws cloudformation deploy \
         VpcId="${VPC_ID}" \
         SubnetIds="${SUBNET_IDS}" \
         ImageUri="${ECR_URI}:latest" \
-        DBPassword="TuPasswordSeguro123!" \
-    --no-fail-on-empty-changeset
+        DBPassword="TuPasswordSeguro123!"
 ```
 
-CloudFormation crea todos los recursos en orden y reporta `CREATE_COMPLETE` al terminar (~8–10 minutos, RDS es lo que más tarda).
+CloudFormation crea todos los recursos (~8-10 minutos, RDS es lo que mas tarda).
 
-#### Paso 7 — Verificar el despliegue
+#### Paso 6 — Verificar el despliegue (CloudShell)
 
 ```bash
 # Estado del stack
@@ -400,15 +412,27 @@ aws cloudformation describe-stacks \
 
 #### Re-deploy de imagen (actualizaciones futuras)
 
+Desde SageMaker:
 ```bash
 docker build --network sagemaker -t data-product-forecast:local . \
   && docker tag data-product-forecast:local "${ECR_URI}:latest" \
-  && docker push "${ECR_URI}:latest" \
-  && aws ecs update-service \
-       --cluster forecast-app-Cluster \
-       --service forecast-app-Service \
-       --force-new-deployment \
-       --region $REGION
+  && docker push "${ECR_URI}:latest"
+```
+
+Desde CloudShell:
+```bash
+aws ecs update-service \
+    --cluster forecast-app-cluster \
+    --service forecast-app \
+    --force-new-deployment \
+    --region us-east-1
+```
+
+#### Eliminar el stack
+
+```bash
+aws cloudformation delete-stack --stack-name forecast-app --region us-east-1
+aws cloudformation wait stack-delete-complete --stack-name forecast-app --region us-east-1
 ```
 
 ## Validación de código

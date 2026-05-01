@@ -110,7 +110,6 @@ Resources:
           "username": "${DBUsername}",
           "password": "${DBPassword}",
           "dbname":   "${DBName}",
-          "host":     "${RdsInstance.Endpoint.Address}",
           "port":     "5432",
           "engine":   "postgres"
         }
@@ -120,19 +119,15 @@ Resources:
     Properties:
       GroupDescription: !Sub 'PostgreSQL access for ${ServiceName}'
       VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+          Description: PostgreSQL public access (SageMaker PublicInternetOnly)
       Tags:
         - Key: app
           Value: !Ref ServiceName
-
-  RdsIngressFromECS:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref RdsSecurityGroup
-      IpProtocol: tcp
-      FromPort: 5432
-      ToPort: 5432
-      SourceSecurityGroupId: !Ref ECSSecurityGroup
-      Description: PostgreSQL from ECS tasks only
 
   RdsSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -159,10 +154,9 @@ Resources:
       DBSubnetGroupName: !Ref RdsSubnetGroup
       VPCSecurityGroups:
         - !Ref RdsSecurityGroup
-      BackupRetentionPeriod: 7
+      BackupRetentionPeriod: 0
       StorageEncrypted: true
       AutoMinorVersionUpgrade: true
-      DeletionProtection: false
 
   RdsReadReplica:
     Type: AWS::RDS::DBInstance
@@ -291,7 +285,7 @@ Resources:
           FromPort: 8501
           ToPort: 8501
           SourceSecurityGroupId: !Ref ALBSecurityGroup
-          Description: Trafico ALB -> Streamlit
+          Description: Trafico ALB a Streamlit
 
   # ═══════════════════════════════════════════════════════════════════════════
   # ALB + Target Group + Listener

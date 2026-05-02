@@ -58,3 +58,4 @@ venv/
 # Auditorías y notas locales
 AUDIT*.md
 NOTES.md
+artifacts/models/*.json

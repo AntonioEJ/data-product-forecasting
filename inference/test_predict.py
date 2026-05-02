@@ -71,15 +71,21 @@ def fake_df(feature_cols):
 # Tests
 # ---------------------------------------------------------------------------
 
-def test_load_model_devuelve_tupla(tmp_path, fake_model, fake_metadata):
+def test_load_model_devuelve_tupla(tmp_path, fake_metadata):
+    """load_model debe retornar una tupla de dos elementos."""
     model_path = tmp_path / "model.pkl"
-    joblib.dump(fake_model, model_path)
     (tmp_path / "model.json").write_text(json.dumps(fake_metadata), encoding="utf-8")
 
-    result = load_model(model_path)
+    sentinel = object()
+    with (
+        patch("inference.predict.joblib.load", return_value=sentinel),
+    ):
+        result = load_model(model_path)
 
     assert isinstance(result, tuple)
     assert len(result) == 2
+    assert result[0] is sentinel
+    assert result[1] == fake_metadata
 
 
 def test_generate_backtest_columnas(tmp_path, fake_model, fake_metadata, fake_df, cfg):

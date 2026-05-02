@@ -50,7 +50,7 @@ def _build_output_df(
             "forecast_date": forecast_dates,
             "predicted_units": predicted_units.astype(np.float64),
             "actual_units": actual_units,
-            "created_at": pd.Timestamp.utcnow(),
+            "created_at": pd.Timestamp.now("UTC"),
             "batch_job_id": pd.array([pd.NA] * n, dtype="Int64"),
         }
     )

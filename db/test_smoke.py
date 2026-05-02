@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from db.schema import batch_jobs, metadata, metrics, predictions, products, shops
+from db.schema import batch_jobs, feedback, metadata, metrics, predictions, products, shops
 
-EXPECTED_TABLES = {"products", "shops", "predictions", "metrics", "batch_jobs"}
+EXPECTED_TABLES = {"products", "shops", "predictions", "metrics", "batch_jobs", "feedback"}
 
 
-def test_metadata_tiene_cinco_tablas():
+def test_metadata_tiene_seis_tablas():
     assert set(metadata.tables.keys()) == EXPECTED_TABLES
 
 
@@ -87,3 +87,39 @@ def test_metrics_columnas_requeridas():
         "category_name", "mae", "rmse",
         "mae_naive", "rmse_naive", "computed_at",
     } <= cols
+
+def test_pk_feedback():
+    pk_cols = {c.name for c in feedback.primary_key}
+    assert pk_cols == {"id"}
+
+
+def test_feedback_columnas_requeridas():
+    cols = {c.name for c in feedback.columns}
+    assert {
+        "id", "shop_id", "item_id", "comment",
+        "status", "reported_by", "created_at",
+    } <= cols
+
+
+def test_feedback_status_no_nullable():
+    col = feedback.c.status
+    assert col.nullable is False
+
+
+def test_feedback_reported_by_nullable():
+    col = feedback.c.reported_by
+    assert col.nullable is True
+
+
+def test_feedback_fk_a_shops():
+    col = feedback.c.shop_id
+    fks = list(col.foreign_keys)
+    assert len(fks) == 1
+    assert fks[0].column.table.name == "shops"
+
+
+def test_feedback_fk_a_products():
+    col = feedback.c.item_id
+    fks = list(col.foreign_keys)
+    assert len(fks) == 1
+    assert fks[0].column.table.name == "products"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, Date, DateTime, Float, ForeignKey, Integer, MetaData, String, Table
+from sqlalchemy import Column, Date, DateTime, Float, ForeignKey, Integer, MetaData, String, Table, Text
 
 metadata = MetaData()
 
@@ -56,4 +56,16 @@ metrics = Table(
     Column("mae_naive", Float, nullable=False),
     Column("rmse_naive", Float, nullable=False),
     Column("computed_at", DateTime, nullable=False),
+)
+
+feedback = Table(
+    "feedback",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("shop_id", Integer, ForeignKey("shops.shop_id"), nullable=False),
+    Column("item_id", Integer, ForeignKey("products.item_id"), nullable=False),
+    Column("comment", Text, nullable=False),
+    Column("status", String(20), nullable=False, server_default="open"),
+    Column("reported_by", String(100), nullable=True),
+    Column("created_at", DateTime, nullable=False),
 )

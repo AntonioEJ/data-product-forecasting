@@ -50,11 +50,10 @@ def load_predictions(
     # antes de ejecutar el lambda, lo que hace fallar int().
     df["batch_job_id"] = [None if pd.isna(v) else int(v) for v in df["batch_job_id"]]
 
-    # actual_units NaN → None para el INSERT
-    df["actual_units"] = df["actual_units"].where(df["actual_units"].notna(), other=None)
-
     cols = ["shop_id", "item_id", "forecast_date", "predicted_units", "actual_units", "created_at", "batch_job_id"]
-    registros = df[cols].to_dict(orient="records")
+    subset = df[cols]
+    # Convertir a object para que NaN/NaT/pd.NA queden como None nativo antes del INSERT
+    registros = subset.astype(object).where(pd.notna(subset), None).to_dict(orient="records")
 
     with engine.begin() as conn:
         conn.execute(predictions.delete())

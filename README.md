@@ -413,22 +413,42 @@ aws cloudformation describe-stacks \
 
 **App URL:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
 
+> La app incluye:
+> - Menú en español con 4 secciones: Exploración de Pronósticos, Exportación Masiva, Evaluación del Modelo, Retroalimentación del Negocio
+> - Filtrado por Tienda o Categoría con datos reales desde RDS
+> - Proyección de próxima temporada vs histórico real
+> - Exportación a CSV descargable directamente desde el browser
+> - Persistencia de retroalimentación de negocio en RDS
+
 #### Re-deploy de imagen (actualizaciones futuras)
 
-Desde SageMaker:
+Desde SageMaker — build y push a ECR:
 ```bash
-docker build --network sagemaker -t data-product-forecast:local . \
-  && docker tag data-product-forecast:local "${ECR_URI}:latest" \
+docker build --network sagemaker -t "${ECR_URI}:latest" . \
   && docker push "${ECR_URI}:latest"
 ```
 
-Desde CloudShell:
+Desde CloudShell o máquina local con permisos ECS — force re-deploy:
 ```bash
 aws ecs update-service \
     --cluster forecast-app-cluster \
     --service forecast-app \
     --force-new-deployment \
     --region us-east-1
+```
+
+> **Nota:** El rol de SageMaker no tiene permisos de `ecs:UpdateService`.
+> Usa AWS Console → ECS → forecast-app-cluster → forecast-app → **Update** → marcar **Force new deployment**,
+> o ejecuta el comando desde CloudShell.
+
+Monitorear el estado del deploy:
+```bash
+aws ecs describe-services \
+    --cluster forecast-app-cluster \
+    --services forecast-app \
+    --region us-east-1 \
+    --query "services[0].deployments[*].{status:status,running:runningCount,rollout:rolloutState}" \
+    --output table
 ```
 
 #### Paso 7 — Validar conexion a RDS (SageMaker)

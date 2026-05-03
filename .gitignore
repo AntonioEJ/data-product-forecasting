@@ -21,6 +21,8 @@ venv/
 
 *.parquet
 *.csv
+*.pkl
+*.joblib
 
 # ----------------------------
 # Logs
@@ -52,3 +54,8 @@ venv/
 # Docker
 # ----------------------------
 *.tar
+
+# Auditorías y notas locales
+AUDIT*.md
+NOTES.md
+artifacts/models/*.json

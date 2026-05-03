@@ -1,5 +1,5 @@
 [tool.hatch.build.targets.wheel]
-packages = ["etl", "utils", "app", "services", "config", "data"]
+packages = ["app", "config", "data", "db", "etl", "evaluation", "inference", "services", "training", "utils"]
 [project]
 name = "data-product-forecasting"
 version = "0.1.0"

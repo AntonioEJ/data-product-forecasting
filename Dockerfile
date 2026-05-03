@@ -24,7 +24,7 @@ COPY app/ app/
 COPY backend/ backend/
 COPY config.py config.py
 COPY utils/ utils/
-COPY artifacts/predictions/ artifacts/predictions/
+COPY data/ data/
 
 EXPOSE 8501
 

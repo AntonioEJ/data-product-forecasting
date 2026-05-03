@@ -62,10 +62,10 @@ def get_predictions_with_actuals(
         JOIN products p ON p.item_id = pr.item_id
         JOIN shops s ON s.shop_id = pr.shop_id
         WHERE pr.actual_units IS NOT NULL
-          AND (:category_name IS NULL OR p.category_name = :category_name)
-          AND (:shop_id IS NULL OR pr.shop_id = :shop_id)
+          AND (CAST(:category_name AS TEXT) IS NULL OR p.category_name = :category_name)
+          AND (CAST(:shop_id AS INTEGER) IS NULL OR pr.shop_id = :shop_id)
         ORDER BY pr.forecast_date DESC, pr.item_id
-        LIMIT :limit
+        LIMIT CAST(:limit AS INTEGER)
     """
     params = {
         "category_name": category_name,
@@ -144,7 +144,7 @@ def get_feedback_list(status_filter: str | None = None) -> pd.DataFrame:
         FROM feedback f
         JOIN shops s ON s.shop_id = f.shop_id
         JOIN products p ON p.item_id = f.item_id
-        WHERE (:status_filter IS NULL OR f.status = :status_filter)
+        WHERE (CAST(:status_filter AS TEXT) IS NULL OR f.status = :status_filter)
         ORDER BY f.created_at DESC
         """,
         {"status_filter": status_filter},

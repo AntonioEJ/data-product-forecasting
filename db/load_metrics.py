@@ -16,7 +16,6 @@ logger = get_logger(__name__)
 def load_metrics(metrics_path: str | Path, engine: Engine) -> int:
     """Lee metrics_by_category.parquet y carga la tabla metrics.
 
-    Se descarta la columna n_obs (no está en el schema).
     El campo id es autoincrement — no se incluye en el INSERT.
 
     Args:
@@ -28,7 +27,7 @@ def load_metrics(metrics_path: str | Path, engine: Engine) -> int:
     """
     df = pd.read_parquet(metrics_path)
 
-    cols = ["category_name", "mae", "rmse", "mae_naive", "rmse_naive", "computed_at"]
+    cols = ["category_name", "n_obs", "mae", "rmse", "mae_naive", "rmse_naive", "computed_at"]
     df = df[cols]
 
     registros = df.to_dict(orient="records")

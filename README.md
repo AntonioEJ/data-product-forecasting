@@ -1,434 +1,211 @@
-# data-product-forecasting
+# Forecast Demand — Data Product POC
 
-Producto de datos de pronóstico de demanda construido sobre AWS con pipeline ETL reproducible, arquitectura medallion y frontend Streamlit.
+**Autores:** José Antonio Esparza · Gustavo Pardo  
+**Repositorio:** https://github.com/AntonioEJ/data-product-forecasting  
+**App en producción:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
 
-Este proyecto construye un producto de datos de pronóstico de demanda sobre el dataset
-[Predict Future Sales](https://www.kaggle.com/c/competitive-data-science-predict-future-sales)
-de Kaggle (~2.9M registros de ventas). Abarca ingestión, transformación, feature engineering,
-modelado y visualización.
+---
 
-## Autores
+## 1. El problema de negocio
 
-- José Antonio Esparza
-- Gustavo Pardo
+Las áreas de Finanzas y Planeación de una empresa de retail con 60 tiendas y más de 22,000 productos toman decisiones de inventario y compra con visibilidad limitada de la demanda futura. El resultado habitual: sobrestock en productos lentos, quiebre de stock en temporadas clave y pronósticos hechos a mano en Excel que no escalan.
 
-## Qué resuelve
+Este proyecto construye un **producto de datos de pronóstico de demanda** que transforma ~2.9 millones de registros históricos de ventas en predicciones mensuales accionables, accesibles para cualquier usuario de negocio a través de una aplicación web sin necesidad de conocimientos técnicos.
 
-Este proyecto implementa un pipeline end-to-end de forecasting de ventas orientado a usuarios de negocio (Finanzas, Planeación, BI). Descarga datos de competencias de Kaggle, los transforma a través de capas medallion (bronze → silver → gold), genera features para modelos de ML y expone los resultados a través de una aplicación Streamlit conectada a RDS.
+**¿Qué valor genera?**
 
-No es un notebook exploratorio. Es un producto de datos diseñado para ejecutarse de forma reproducible en local, Docker o SageMaker Processing Jobs.
+- Los equipos de Finanzas pueden ver la proyección de la próxima temporada por tienda o categoría en segundos.
+- Planeación puede exportar un CSV de predicciones filtradas directamente desde el browser, sin depender de un analista.
+- El negocio puede reportar discrepancias entre el pronóstico y la realidad, cerrando el ciclo de mejora continua.
+- El equipo técnico puede monitorear la calidad del modelo (MAE, RMSE) y compararlo contra un baseline naive, todo desde la misma interfaz.
 
-## Arquitectura
+---
 
-### Flujo de datos
+## 2. URLs clave
 
-```
-Kaggle / S3 (raw)
-       │
-       ▼
-   ETL local / Docker / SageMaker
-       │
-       ├── Bronze (CSV → Parquet en S3, registro en Glue)
-       ├── Silver (datos limpios y preparados)
-       └── Gold  (tabla analítica vía Athena CTAS)
-       │
-       ▼
-   Feature Engineering
-       │
-       ▼
-   Modelo (LightGBM) → predicciones batch
-       │
-       ▼
-   RDS PostgreSQL (predicciones precomputadas)
-       │
-       ▼
-   Streamlit (consulta interactiva + exportación batch)
-```
-
-### Capas medallion
-
-- **Bronze**: ingesta directa de archivos CSV desde `data/raw/` hacia S3 en formato Parquet. Registro automático en Glue Data Catalog.
-- **Silver**: datos limpios y preparados desde `data/prep/`. Misma mecánica de subida a S3 y registro en Glue.
-- **Gold**: tabla analítica construida mediante CTAS en Athena a partir de las capas anteriores.
-
-### Decisiones de diseño
-
-- Predicciones precomputadas (batch) almacenadas en RDS para baja latencia en consultas.
-- Exportaciones batch a S3 con URL firmada.
-- Credenciales gestionadas vía Secrets Manager y variables de entorno (nunca hardcodeadas).
-- Logging estructurado compatible con CloudWatch.
-
-## 🛠️ Stack tecnológico
-
-| Categoría | Herramientas | Por qué |
-|---|---|---|
-| Lenguaje | Python 3.11+ | Ecosistema maduro para data/ML |
-| Gestión de deps | uv + lockfile | Instalaciones deterministas y rápidas |
-| Linting/formato | Ruff | PEP 8, imports, docstrings, bugbear — un solo tool |
-| Frontend | Streamlit | Prototipos rápidos para usuarios de negocio |
-| Cloud | AWS (S3, Glue, Athena, RDS, ECS Fargate, ECR, Secrets Manager) | Stack enterprise estándar |
-| ML | LightGBM, scikit-learn | Modelos de gradient boosting para series de tiempo |
-| ETL | pandas, pyarrow, awswrangler | Lectura/escritura eficiente a S3/Glue |
-| DB | SQLAlchemy + psycopg (v3) | Connection pooling, ORM-ready, sin compilación C |
-| Contenedores | Docker | Reproducibilidad entre local y cloud |
-| IaC | CloudFormation | Infraestructura versionada (RDS + ECS + ALB) |
-| CI | GitHub Actions | Lint + format + score en cada PR |
-
-## Estructura del repositorio
-
-```
-.
-├── app/                        → UI Streamlit
-│   ├── __init__.py
-│   ├── components/
-│   ├── main.py
-│   └── pages/
-│       ├── batch_export.py
-│       ├── business_feedback.py
-│       ├── forecast_exploration.py
-│       └── model_evaluation.py
-├── artifacts/                  → Outputs del ETL
-│   ├── logs/
-│   │   └── etl.log
-│   ├── models/
-│   ├── predictions/
-│   └── yearly_control.csv
-├── backend/                    
-├── config/                     
-├── config.py                   → Rutas y parámetros centralizados (PathsConfig, ModelConfig)
-├── .streamlit/
-│   └── config.toml             → Config Streamlit (headless, puerto 8501)
-├── data/
-│   ├── inference/
-│   ├── predictions/
-│   ├── prep/                   → Datasets preparados (parquet + csv)
-│   │   ├── df_base.csv
-│   │   ├── df_base.parquet
-│   │   ├── monthly_with_lags.csv
-│   │   └── monthly_with_lags.parquet
-│   ├── raw/                    → CSVs de Kaggle (no se commitean)
-│   │   ├── item_categories_en.csv
-│   │   ├── item_categories.csv
-│   │   ├── items_en.csv
-│   │   ├── items.csv
-│   │   ├── sales_train.csv
-│   │   ├── sample_submission.csv
-│   │   ├── shops_en.csv
-│   │   ├── shops.csv
-│   │   └── test.csv
-│   └── rds.py                  → Capa de acceso a RDS (SQLAlchemy + psycopg3)
-├── docs/
-│   ├── arquitectura.md
-│   ├── erd.md
-│   └── screenshots/
-├── etl/
-│   ├── __init__.py
-│   ├── __main__.py
-│   ├── bronze.py               → Ingesta CSV → S3/Glue
-│   ├── Dockerfile              → Imagen para ejecutar ETL en Docker/SageMaker
-│   ├── etl.py                  → Pipeline ETL principal (descarga, limpieza, agregación)
-│   ├── features.py             → Feature engineering (lags, rolling means)
-│   ├── gold.py                 → CTAS en Athena
-│   ├── silver.py               → Datos limpios → S3/Glue
-│   └── test/
-│       └── test_prep.py        → Tests de validación de outputs
-├── inference/                  → (pendiente)
-├── infra/
-│   └── core.yaml               → CloudFormation stack
-├── models/                     → Artefactos de ML
-├── notebooks/                  → EDA y prototipos
-├── services/                   → Lógica de negocio (pendiente)
-├── utils/
-│   └── logging.py              → Logging centralizado (CloudWatch-ready)
-├── .dockerignore               → Exclusiones del build Docker
-├── Dockerfile                  → Imagen Streamlit para Fargate (health check incluido)
-├── pyproject.toml              → Dependencias, config de ruff y pytest
-└── uv.lock                     → Lockfile determinista
-```
-
-## ⚙️ Cómo ejecutar
-
-### Local
-
-```bash
-git clone https://github.com/AntonioEJ/data-product-forecasting.git
-cd data-product-forecasting
-
-# Instalar dependencias (incluye dev: ruff, pytest)
-pip install uv
-uv sync --all-extras
-
-# Configurar credenciales de Kaggle
-export KAGGLE_USERNAME=<tu-usuario>
-export KAGGLE_KEY=<tu-key>
-
-# Ejecutar ETL
-uv run python -m etl.etl --raw-dir data/raw --prep-dir data/prep --artifacts-dir artifacts
-
-# Lanzar Streamlit
-uv run streamlit run app/main.py
-```
-
-### Docker
-
-```bash
-# ETL
-docker build -t etl-pipeline:latest -f etl/Dockerfile .
-docker run --rm \
-    -v "$PWD/data:/app/data" \
-    -v "$PWD/artifacts:/app/artifacts" \
-    -e KAGGLE_USERNAME \
-    -e KAGGLE_KEY \
-    etl-pipeline:latest
-
-# Streamlit
-docker build -t forecasting-app:latest .
-docker run --rm -p 8501:8501 forecasting-app:latest
-```
-
-### SageMaker Studio 
-
-El proyecto se clona y ejecuta directamente en SageMaker Studio o una instancia de notebook.
-La estructura en SageMaker queda en `~/data-product-forecasting` con las mismas carpetas que el repo.
-
-```bash
-# Desde la terminal de SageMaker Studio
-cd ~/data-product-forecasting
-
-# Instalar uv si no está disponible
-pip install uv
-
-# Instalar dependencias
-uv sync --all-extras
-
-# Configurar credenciales de Kaggle
-export KAGGLE_USERNAME=<tu-usuario>
-export KAGGLE_KEY=<tu-key>
-
-uv run python -m etl.etl
-
-```
-
-Outputs generados tras ejecutar el ETL en SageMaker:
-
-```
-data/
-├── prep/
-│   ├── df_base.csv
-│   ├── df_base.parquet
-│   ├── monthly_with_lags.csv
-│   └── monthly_with_lags.parquet
-artifacts/
-├── logs/
-│   └── etl.log
-└── yearly_control.csv
-```
-
-> **Nota**: en SageMaker no se necesita Docker. El ETL corre directamente con `uv run`.
-> Los logs se escriben en `artifacts/logs/etl.log` y también en stdout (visible en CloudWatch).
-
-## Pipeline Medallion (Bronze / Silver / Gold)
-
-Después de ejecutar el ETL principal (`etl.etl`), los scripts medallion suben los datos procesados a S3 y los registran en AWS Glue Data Catalog.
-
-### Bronze — `etl/bronze.py`
-
-```bash
-python etl/bronze.py --bucket <tu-bucket>
-```
-
-- Lee todos los archivos `.csv` de `data/raw/` (sales_train, items_en, shops_en, etc.).
-- Convierte cada archivo a Parquet y lo sube a `s3://<bucket>/forecasting/bronze/<tabla>/`.
-- Registra cada tabla en Glue Data Catalog bajo la base de datos `forecasting_bronze`.
-- Validación: verifica que cada CSV tenga al menos una fila antes de subir.
-- Al final, confirma que todos los archivos existen en S3.
-
-### Silver — `etl/silver.py`
-
-```bash
-python etl/silver.py --bucket <tu-bucket>
-```
-
-- Lee todos los archivos `.parquet` de `data/prep/` (df_base, monthly_with_lags).
-- Sube cada archivo a `s3://<bucket>/forecasting/silver/<tabla>/`.
-- Registra cada tabla en Glue Data Catalog bajo la base de datos `forecasting_silver`.
-- Validación: confirma existencia de cada archivo en S3 al terminar.
-
-### Gold — `etl/gold.py`
-
-```bash
-python etl/gold.py --bucket <tu-bucket>
-```
-
-- Ejecuta una consulta CTAS en Athena para crear la tabla analítica `forecasting_gold.ventas_analitica`.
-- Combina datos de las capas Bronze/Silver en una vista consolidada para consumo por modelos y dashboards.
-- Resultado almacenado en `s3://<bucket>/forecasting/gold/`.
-
-### Orden de ejecución
-
-```bash
-# 1. ETL principal (descarga, limpieza, feature engineering)
-uv run python -m etl.etl
-
-# 2. Bronze (raw → S3/Glue)
-python etl/bronze.py --bucket <tu-bucket>
-
-# 3. Silver (prep → S3/Glue)
-python etl/silver.py --bucket <tu-bucket>
-
-# 4. Gold (Athena CTAS)
-python etl/gold.py --bucket <tu-bucket>
-```
-
-### Buenas Prácticas del Pipeline ETL
-
-| Práctica | Implementación |
+| Recurso | URL |
 |---|---|
-| **Idempotencia** | Bronze: `overwrite` en chunk 0 + `append` en siguientes. Silver: `overwrite` por archivo. Gold: `delete_table_if_exists` + limpieza S3 antes del CTAS. |
-| **Memory-safe** | Bronze: chunks de 500K filas + `del chunk` + `gc.collect()`. Silver: lectura file-by-file + `del df` + `gc.collect()`. Gold: Athena ejecuta el CTAS sin carga en RAM. |
-| **Logging profesional** | Módulo `logging` con handlers a consola y archivo (`artifacts/logs/{capa}_etl.log`). Timestamps por fase, inicio y fin delimitados, cifras de control al final. |
-| **Manejo de errores** | `try/except` en `main()` con `logger.exception()` + `sys.exit(1)`. Sin fallos silenciosos. |
-| **Docstrings** | Todas las funciones documentadas con Google style: descripción, `Args`, `Returns` y `Raises`. |
-| **Modularidad** | Patrón `validate_file` → `upload_table` → `main` en cada script. Funciones con responsabilidad única. |
-| **Cifras de control** | Cada script imprime al final: tablas procesadas, filas totales, tiempo por tabla y tiempo total. |
-| **CLI** | `argparse` con `--bucket` (y `--data-dir` en Bronze). Documentación disponible con `--help`. |
-| **Pylint** | Bronze: 9.78/10 · Silver: 10.00/10 · Gold: 9.82/10 · Features: 10.00/10 · ETL: 9.74/10 |
+| Repositorio GitHub | https://github.com/AntonioEJ/data-product-forecasting |
+| App en producción (AWS) | http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com |
 
-### Infraestructura (CloudFormation)
+---
 
-`infra/core.yaml` despliega toda la infraestructura en un solo stack:
-- RDS PostgreSQL 17 (db.t3.micro, encrypted, free tier)
-- Secrets Manager con credenciales
+## 3. Arquitectura de la solución
+
+El sistema está diseñado como una arquitectura de datos por capas, donde cada componente tiene una responsabilidad clara y puede evolucionar de forma independiente.
+
+```
+Kaggle (fuente de datos históricos)
+       │
+       ▼
+  S3 — Data Lake (raw)
+       │
+       ▼
+  ETL con arquitectura Medallion
+  ├── Bronze: CSV → Parquet en S3
+  ├── Silver: datos limpios y normalizados
+  └── Gold:  tabla analítica vía Athena
+       │
+       ▼
+  Feature Engineering → LightGBM
+       │
+       ▼
+  RDS PostgreSQL (predicciones precomputadas)
+       │
+       ▼
+  Streamlit en ECS Fargate (app web para el negocio)
+```
+
+La decisión más importante de diseño es que **las predicciones se calculan en batch y se persisten en RDS**, no en tiempo real. Esto mantiene la app rápida y predecible para el usuario, desacopla el pipeline de ML del frontend, y permite escalar ambos de forma independiente.
+
+### Servicios AWS utilizados
+
+| Servicio | Rol en el sistema | Por qué este servicio |
+|---|---|---|
+| **S3** | Data lake: almacena raw, bronze, silver y gold | Bajo costo, durabilidad 99.999999999%, integración nativa con Glue y Athena |
+| **Glue Data Catalog** | Registro y descubrimiento de datasets en S3 | Permite que Athena y otros servicios encuentren los datos sin configuración manual |
+| **Athena** | Construye la capa Gold mediante CTAS | SQL serverless sobre S3 — sin clústeres, sin gestión, pago por query |
+| **RDS PostgreSQL 17** | Almacena predicciones, métricas y feedback | Consultas SQL relacionales con baja latencia; soporte a transacciones para feedback |
+| **ECS Fargate** | Ejecuta la app Streamlit en contenedor | Serverless: sin gestión de servidores, escalado automático, pago por uso |
+| **ECR** | Registro de imágenes Docker | Control de versiones de imágenes, integrado con ECS y IAM |
+| **CloudFormation** | Infraestructura como código | Stack completo reproducible: RDS + ECS + ALB + Secrets Manager en un solo comando |
+| **Secrets Manager** | Gestión de credenciales de RDS | Las contraseñas nunca están en código ni en variables de entorno hardcodeadas en producción |
+| **ALB** | Balanceador de carga para la app | Punto de entrada HTTP público con health checks; permite zero-downtime deploys |
+| **CloudWatch** | Logs de la app y del contenedor | Centralización de logs sin infraestructura adicional |
+
+> **Diagrama de arquitectura:** ver `docs/arquitectura.md` o exportar el archivo `.drawio` en `docs/`.
+
+![Arquitectura](docs/screenshots/arquitectura.png)
+
+---
+
+## 4. Flujo end-to-end del sistema
+
+### Paso 1 — Ingesta de datos
+Los datos históricos de ventas provienen del dataset público [Predict Future Sales](https://www.kaggle.com/c/competitive-data-science-predict-future-sales) de Kaggle (~2.9M registros). Se descargan con la API oficial de Kaggle y se almacenan en `data/raw/`. Los archivos no se versionan en Git.
+
+### Paso 2 — ETL con arquitectura Medallion
+El pipeline ETL (`etl/`) transforma los datos en tres capas:
+
+- **Bronze**: los CSV originales se convierten a Parquet y se suben a S3. Se registran en Glue Data Catalog. Sin transformaciones — reflejo fiel del dato crudo.
+- **Silver**: los datos limpios y normalizados (`data/prep/`) se suben a S3 en formato Parquet. Incluye corrección de tipos, manejo de nulos y traducción de catálogos al inglés.
+- **Gold**: una consulta CTAS en Athena genera la tabla analítica consolidada `forecasting_gold.ventas_analitica`, que combina ventas, productos y tiendas en una sola vista optimizada para ML.
+
+### Paso 3 — Feature Engineering
+El script `etl/features.py` genera lags mensuales y medias móviles sobre la tabla Gold. El resultado es `data/prep/monthly_with_lags.csv`, el dataset de entrenamiento del modelo.
+
+### Paso 4 — Modelo y predicciones
+El componente de modelado (desarrollado por otro miembro del equipo) entrena un modelo **LightGBM** con los features generados y produce predicciones batch por tienda, producto y mes. Las predicciones se cargan en RDS con el script `db/load_predictions.py`.
+
+### Paso 5 — Persistencia y exposición
+Las predicciones, métricas del modelo y datos de catálogo quedan almacenados en RDS PostgreSQL, donde la app Streamlit los consulta en tiempo real mediante queries parametrizadas.
+
+### Paso 6 — Consumo en la app
+La app Streamlit (desplegada en ECS Fargate) expone los resultados a usuarios de negocio. Todas las queries pasan por `data/rds.py`, que gestiona el connection pooling y los parámetros de seguridad.
+
+---
+
+## 5. Modelo de datos (RDS)
+
+La base de datos `forecasting` en RDS PostgreSQL almacena todo lo que la aplicación necesita para operar: predicciones, métricas del modelo, catálogos de referencia, historial de exportaciones y retroalimentación del negocio.
+
+### Tablas principales
+
+| Tabla | Propósito | Escribe | Lee |
+|---|---|---|---|
+| `predictions` | Pronósticos por tienda, producto y mes. Incluye el valor real cuando ya ocurrió. | Pipeline de ML (`db/load_predictions.py`) | App Streamlit (todas las vistas) |
+| `metrics` | MAE, RMSE y comparación vs baseline naive por categoría de producto. | Pipeline de evaluación (`db/load_metrics.py`) | Vista de Evaluación del Modelo |
+| `products` | Catálogo de productos con nombre y categoría. | Script de carga (`db/load_all.py`) | App Streamlit (filtros y joins) |
+| `shops` | Catálogo de tiendas con nombre y ciudad. | Script de carga (`db/load_all.py`) | App Streamlit (filtros y joins) |
+| `batch_jobs` | Registro de exportaciones CSV solicitadas desde la app. | App Streamlit (batch export) | App Streamlit (historial) |
+| `feedback` | Comentarios del negocio sobre pronósticos específicos. | App Streamlit (usuarios de negocio) | App Streamlit (vista de feedback) |
+
+> **Diagrama ERD:** ver `docs/erd.md`.
+
+![ERD](docs/screenshots/erd.png)
+
+La clave de diseño es que `predictions` vincula tiendas, productos y fechas en una sola tabla. Cuando `actual_units IS NULL`, el registro es un pronóstico futuro. Cuando tiene valor, es un dato histórico que permite calcular el error del modelo.
+
+---
+
+## 6. Aplicación Streamlit
+
+La app es el punto de contacto entre los datos y el negocio. Está desplegada públicamente en http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com y tiene cuatro secciones:
+
+### Exploración de Pronósticos
+El usuario puede filtrar por **tienda** o **categoría** y ver dos vistas:
+- El histórico de predicciones vs ventas reales (para evaluar confianza en el modelo)
+- La proyección de la próxima temporada
+
+Esto responde directamente a la pregunta del negocio: *"¿Cuánto se va a vender el próximo mes en mi tienda?"*
+
+### Exportación Masiva
+Permite descargar un CSV de pronósticos filtrado por tienda, categoría o catálogo completo, directamente desde el browser. Diseñado para Finanzas: sin acceso a SQL, sin depender del equipo técnico.
+
+### Evaluación del Modelo
+Muestra el MAE y RMSE ponderados a nivel global y por categoría, comparados contra un baseline naive. Incluye un scatter chart de predicho vs real para validación visual. El filtro por categoría y tienda permite al equipo técnico auditar el comportamiento del modelo en segmentos específicos.
+
+### Retroalimentación del Negocio
+Los usuarios pueden reportar problemas con pronósticos específicos (búsqueda por item_id, tienda y comentario libre). El historial de reportes puede filtrarse por estado: abierto, revisado o resuelto. Cierra el ciclo entre el modelo y el negocio.
+
+### Screenshots de la aplicación
+
+**Exploración de Pronósticos — filtro por tienda:**
+![Exploración por tienda](docs/screenshots/app_forecast_tienda.png)
+
+**Exploración de Pronósticos — proyección próxima temporada:**
+![Próxima temporada](docs/screenshots/app_forecast_temporada.png)
+
+**Exportación Masiva:**
+![Exportación batch](docs/screenshots/app_batch_export.png)
+
+**Evaluación del Modelo — métricas globales y por categoría:**
+![Evaluación modelo](docs/screenshots/app_model_evaluation.png)
+
+**Retroalimentación del Negocio:**
+![Feedback negocio](docs/screenshots/app_business_feedback.png)
+
+---
+
+## 7. Despliegue
+
+La infraestructura completa se despliega con un solo comando de CloudFormation desde AWS CloudShell.
+
+### Stack de infraestructura (`infra/core.yaml`)
+- RDS PostgreSQL 17 (db.t3.micro, almacenamiento encriptado)
 - ECS Fargate cluster + service + task definition
 - ALB internet-facing con health check en `/_stcore/health`
-- IAM roles con least privilege (secrets scoped por ARN)
+- Secrets Manager con las credenciales de RDS
+- IAM roles con principio de mínimo privilegio (acceso a secrets scoped por ARN)
 - CloudWatch log group
 
-> **Nota:** El build de Docker se hace desde SageMaker. El deploy de CloudFormation
-> se hace desde **CloudShell** o la consola de CloudFormation (el rol de SageMaker no tiene
-> permisos de CloudFormation/ELB/IAM).
+### Pipeline de deploy
 
-#### Paso 1 — Build de la imagen (SageMaker)
-
-```bash
-cd ~/data-product-forecasting
-git pull origin feature/etl-processing
-docker build --network sagemaker -t data-product-forecast:local .
+```
+Código (GitHub)
+      │
+      ▼
+Docker build (SageMaker)
+      │
+      ▼
+ECR (imagen versionada)
+      │
+      ▼
+ECS Fargate (nuevo deployment)
+      │
+      ▼
+ALB → app pública
 ```
 
-#### Paso 2 — Crear repo ECR y obtener URI (SageMaker)
-
+**Build y push de imagen** (desde SageMaker):
 ```bash
-REGION=us-east-1
-aws ecr create-repository --repository-name forecast-app-ecr --region $REGION 2>/dev/null || true
-
-ECR_URI=$(aws ecr describe-repositories \
-    --repository-names forecast-app-ecr \
-    --region $REGION \
-    --query "repositories[0].repositoryUri" \
-    --output text)
-
-echo "ECR URI: $ECR_URI"
-```
-
-#### Paso 3 — Login, tag y push a ECR (SageMaker)
-
-```bash
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-aws ecr get-login-password --region $REGION | \
-    docker login --username AWS --password-stdin \
-    "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
-
-docker tag data-product-forecast:local "${ECR_URI}:latest"
+ECR_URI=529236942598.dkr.ecr.us-east-1.amazonaws.com/forecast-app-ecr
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_URI
+docker build --network sagemaker -t "${ECR_URI}:latest" .
 docker push "${ECR_URI}:latest"
 ```
 
-#### Paso 4 — Obtener VPC y subnets (CloudShell)
-
-Abrir **CloudShell** (icono `>_` en la barra superior de la consola AWS):
-
-```bash
-git clone https://github.com/AntonioEJ/data-product-forecasting.git
-cd data-product-forecasting
-git checkout feature/etl-processing
-
-REGION=us-east-1
-ECR_URI="529236942598.dkr.ecr.${REGION}.amazonaws.com/forecast-app-ecr"
-
-VPC_ID=$(aws ec2 describe-vpcs \
-    --filters "Name=isDefault,Values=true" \
-    --query "Vpcs[0].VpcId" \
-    --output text --region $REGION)
-
-SUBNET_IDS=$(aws ec2 describe-subnets \
-    --filters "Name=vpc-id,Values=${VPC_ID}" \
-    --query "Subnets[*].SubnetId" \
-    --output text --region $REGION | tr '\t' ',')
-
-echo "VPC:     ${VPC_ID}"
-echo "Subnets: ${SUBNET_IDS}"
-```
-
-#### Paso 5 — Desplegar el stack (CloudShell)
-
-```bash
-# Limpiar stack fallido si existe
-aws cloudformation delete-stack --stack-name forecast-app --region $REGION 2>/dev/null
-aws cloudformation wait stack-delete-complete --stack-name forecast-app --region $REGION 2>/dev/null
-aws logs delete-log-group --log-group-name /ecs/forecast-app --region $REGION 2>/dev/null || true
-
-# Desplegar
-aws cloudformation deploy \
-    --template-file infra/core.yaml \
-    --stack-name forecast-app \
-    --capabilities CAPABILITY_NAMED_IAM \
-    --region $REGION \
-    --parameter-overrides \
-        VpcId="${VPC_ID}" \
-        SubnetIds="${SUBNET_IDS}" \
-        ImageUri="${ECR_URI}:latest" \
-        DBPassword="TuPasswordSeguro123!"
-```
-
-CloudFormation crea todos los recursos (~8-10 minutos, RDS es lo que mas tarda).
-
-#### Paso 6 — Verificar el despliegue (CloudShell)
-
-```bash
-# Estado del stack
-aws cloudformation describe-stacks \
-    --stack-name forecast-app \
-    --query "Stacks[0].StackStatus" \
-    --output text --region $REGION
-# Esperado: CREATE_COMPLETE
-
-# Obtener la URL de la app
-aws cloudformation describe-stacks \
-    --stack-name forecast-app \
-    --query "Stacks[0].Outputs[?OutputKey=='AppURL'].OutputValue" \
-    --output text --region $REGION
-# http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
-```
-
-**App URL:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
-
-> La app incluye:
-> - Menú en español con 4 secciones: Exploración de Pronósticos, Exportación Masiva, Evaluación del Modelo, Retroalimentación del Negocio
-> - Filtrado por Tienda o Categoría con datos reales desde RDS
-> - Proyección de próxima temporada vs histórico real
-> - Exportación a CSV descargable directamente desde el browser
-> - Persistencia de retroalimentación de negocio en RDS
-
-#### Re-deploy de imagen (actualizaciones futuras)
-
-Desde SageMaker — build y push a ECR:
-```bash
-docker build --network sagemaker -t "${ECR_URI}:latest" . \
-  && docker push "${ECR_URI}:latest"
-```
-
-Desde CloudShell o máquina local con permisos ECS — force re-deploy:
+**Force re-deploy** (desde CloudShell):
 ```bash
 aws ecs update-service \
     --cluster forecast-app-cluster \
@@ -437,73 +214,110 @@ aws ecs update-service \
     --region us-east-1
 ```
 
-> **Nota:** El rol de SageMaker no tiene permisos de `ecs:UpdateService`.
-> Usa AWS Console → ECS → forecast-app-cluster → forecast-app → **Update** → marcar **Force new deployment**,
-> o ejecuta el comando desde CloudShell.
+### Credenciales
 
-Monitorear el estado del deploy:
-```bash
-aws ecs describe-services \
-    --cluster forecast-app-cluster \
-    --services forecast-app \
-    --region us-east-1 \
-    --query "services[0].deployments[*].{status:status,running:runningCount,rollout:rolloutState}" \
-    --output table
-```
+En producción (ECS), la app obtiene las credenciales de RDS automáticamente desde Secrets Manager. En local, se usan variables de entorno. El código en `data/rds.py` resuelve ambos casos sin configuración adicional.
 
-#### Paso 7 — Validar conexion a RDS (SageMaker)
+### Screenshots de AWS
 
-```bash
-# Instalar driver de Postgres (boto3 ya viene en SageMaker)
-pip install "psycopg[binary]"
+**ECS Fargate — servicio corriendo:**
+![ECS servicio](docs/screenshots/aws_ecs_service.png)
 
-# El script obtiene las credenciales automaticamente desde Secrets Manager
-python scripts/check_rds.py
-```
+**CloudFormation — stack en CREATE_COMPLETE:**
+![CloudFormation stack](docs/screenshots/aws_cloudformation.png)
 
-Salida esperada:
+**ECR — imagen publicada:**
+![ECR imagen](docs/screenshots/aws_ecr.png)
 
-```
-Credenciales obtenidas desde Secrets Manager (forecast-app/rds/credentials)
-Conectando a forecast-app-db.cgfw8ius6eld.us-east-1.rds.amazonaws.com:5432/forecasting como postgres ...
-OK - Conexion exitosa
-    PostgreSQL 17.4 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 12.4.0, 64-bit
+**RDS — instancia disponible:**
+![RDS disponible](docs/screenshots/aws_rds.png)
 
-Base de datos vacia (sin tablas de usuario)
-```
+**App pública en el browser:**
+![App en producción](docs/screenshots/app_produccion_browser.png)
 
-#### Eliminar el stack
+---
 
-```bash
-aws cloudformation delete-stack --stack-name forecast-app --region us-east-1
-aws cloudformation wait stack-delete-complete --stack-name forecast-app --region us-east-1
-```
+## 8. Operación
 
-## Validación de código
+### Logs
+Todos los logs de la app (queries, errores, feedback registrado) van a **CloudWatch Logs** bajo el grupo `/ecs/forecast-app`. El logging usa un formato estructurado con timestamps y contexto, compatible con filtros y alarmas de CloudWatch.
 
-```bash
-uv run ruff format --check .    # formato
-uv run ruff check .             # lint (E/F/I/B/C4/UP/D)
-uv run pytest -v                # tests
-```
+### Manejo de fallas
+La app maneja errores de conectividad a RDS de forma explícita: cada vista muestra un mensaje de error descriptivo en lugar de fallar silenciosamente. El ALB tiene health checks cada 30 segundos y reemplaza automáticamente tareas no saludables.
 
-## 📋 Prácticas implementadas
+### Disponibilidad
+ECS Fargate mantiene la tarea en ejecución continua. Si el contenedor falla, ECS lo reemplaza automáticamente. El ALB gestiona el zero-downtime durante re-deploys gracias al rolling deployment configurado en la task definition.
 
-- **PEP 8 estricto**: enforced por Ruff con reglas E, F, I, B, C4, UP, D (Google-style docstrings).
-- **Logging estructurado**: formato compatible con CloudWatch, timestamps UTC, hostname como contexto. Sin `print()`.
-- **Modularidad del ETL**: descarga, limpieza, feature engineering y persistencia en funciones separadas.
-- **Reproducibilidad**: `uv.lock` + `pyproject.toml` + `--frozen` en Docker y CI. Sin instalaciones ad-hoc.
-- **Seguridad**: credenciales vía env vars o Secrets Manager. Sin passwords en código. Queries parametrizadas con SQLAlchemy `text()` (`:nombre`).
-- **Rutas parametrizables**: `--raw-dir`, `--prep-dir`, `--artifacts-dir` permiten ejecutar en local, Docker y SageMaker sin cambiar código.
-- **CI automatizado**: GitHub Actions con format check, lint, ruff score y resumen por PR.
+---
 
-## Mejoras pendientes
+## 9. Costos estimados (us-east-1)
 
-- Conectar páginas de Streamlit a RDS (actualmente usan datos mock).
-- Implementar training pipeline con tracking de experimentos.
-- Agregar tests de integración para las capas S3/Glue.
-- Configurar GitHub Actions para CI automático en PRs.
+| Servicio | Estimado mensual |
+|---|---|
+| RDS db.t3.micro (PostgreSQL) | ~$15 USD |
+| ECS Fargate (0.25 vCPU / 0.5 GB, 24/7) | ~$10 USD |
+| ALB | ~$18 USD |
+| S3 (< 5 GB) | < $1 USD |
+| Secrets Manager (1 secreto) | < $1 USD |
+| CloudWatch Logs | < $1 USD |
+| **Total estimado** | **~$45 USD/mes** |
+
+Para un POC o entorno de desarrollo, el costo puede reducirse apagando RDS e ECS fuera de horario (~70% de ahorro). Para producción real, el costo escala principalmente con el tamaño de RDS y la carga en Fargate.
+
+---
+
+## 10. Limitaciones y próximos pasos
+
+### Limitaciones actuales (POC)
+
+- **Datos estáticos**: las predicciones se generaron en batch una sola vez. No hay pipeline programado para actualizar pronósticos automáticamente.
+- **Sin autenticación**: la app es pública. Un entorno de producción requiere integración con un Identity Provider (Cognito, Okta).
+- **Un solo ambiente**: no hay separación dev/staging/prod. Todo corre en un solo stack de CloudFormation.
+- **Modelo no versionado**: LightGBM se entrena una vez. No hay tracking de experimentos ni A/B testing de modelos.
+- **Sin alertas operativas**: CloudWatch tiene los logs, pero no hay alarmas configuradas para MAE fuera de umbral o errores de app.
+
+### Para escalar a producción
+
+1. **Orquestar el pipeline** con Apache Airflow o AWS Step Functions para re-entrenar y re-predecir mensualmente.
+2. **Versionar modelos** con MLflow o SageMaker Model Registry.
+3. **Agregar autenticación** con Amazon Cognito o integración SSO.
+4. **Separar ambientes** (dev/prod) con stacks de CloudFormation independientes.
+5. **Configurar alarmas** en CloudWatch para degradación del modelo y errores de app.
+
+---
+
+## 11. Uso de Herramientas de IA en el Proyecto
+
+Como requisito de transparencia académica, el equipo declara el siguiente uso de herramientas de inteligencia artificial:
+
+**Herramienta utilizada:** GitHub Copilot (Claude Sonnet) — asistente integrado en VS Code.
+
+**Para qué se utilizó:**
+
+| Área | Uso específico |
+|---|---|
+| Consultas técnicas | Resolver dudas sobre APIs de SQLAlchemy, psycopg v3, Streamlit y boto3 |
+| Revisión de sintaxis | Identificar errores de sintaxis y sugerencias de corrección en Python |
+| Documentación | Apoyo en redacción de docstrings y secciones del README |
+| Comandos de AWS CLI | Consultar la sintaxis correcta de comandos `aws ecs`, `aws ecr`, `aws cloudformation` |
+| Debugging | Orientación para interpretar stack traces y mensajes de error |
+
+**Lo que NO fue generado por IA:** el diseño de la arquitectura, las decisiones de modelado, la estructura del repositorio, el esquema de la base de datos, el pipeline ETL, la lógica de las vistas de Streamlit, el stack de CloudFormation y los tests unitarios son producto del trabajo original del equipo.
+
+El código, los diagramas y la explicación del diseño fueron desarrollados, revisados y validados por los autores. Las herramientas de IA se usaron como apoyo puntual equivalente al uso de documentación oficial o Stack Overflow.
+
+---
+
+## Reporte del POC
+
+El documento `docs/reporte.md` contiene el reporte autocontenido del sistema: descripción del problema, arquitectura, modelo de datos, evaluación del modelo, tour de la app y consideraciones de costo. Es el artefacto de revisión independiente del README.
+
+---
 
 ## Documentación adicional
 
-Diagramas de arquitectura y modelo de datos en `docs/`.
+- Decisiones de arquitectura: `docs/arquitectura.md`
+- Modelo de datos (ERD): `docs/erd.md`
+- Diagrama de arquitectura (editable): `docs/arquitectura.drawio`
+- Diagrama ERD (editable): `docs/erd.drawio`
+- Documentación de módulos Python: `docs/api/`

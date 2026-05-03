@@ -99,13 +99,13 @@ def _format_units(n: float) -> str:
 def render() -> None:
     """Renderiza la página de exploración de pronósticos."""
     logger = get_logger(__name__)
-    st.title("🔎 Forecast Exploration")
+    st.title("🔎 Exploración de Pronósticos")
 
     # ── Sidebar: modo de filtro ───────────────────────────────────────────────
-    st.sidebar.header("Filters")
+    st.sidebar.header("Filtros")
     filter_mode = st.sidebar.radio(
-        "Filter by",
-        ["Store", "Category"],
+        "Filtrar por",
+        ["Tienda", "Categoría"],
         horizontal=True,
     )
 
@@ -122,14 +122,14 @@ def render() -> None:
     filter_label = ""
     df = pd.DataFrame()
 
-    if filter_mode == "Store":
+    if filter_mode == "Tienda":
         if not shops:
             st.warning("No hay tiendas disponibles en la base de datos.")
             return
-        selected = st.sidebar.selectbox("Store", list(shops.keys()))
+        selected = st.sidebar.selectbox("Tienda", list(shops.keys()))
         filter_label = selected
         shop_id = shops[selected]
-        logger.info("Filter: store=%s (id=%s)", selected, shop_id)
+        logger.info("Filtro: tienda=%s (id=%s)", selected, shop_id)
 
         with st.spinner("Cargando pronósticos..."):
             try:
@@ -139,11 +139,11 @@ def render() -> None:
                 logger.exception("Error _load_by_store: %s", exc)
                 return
 
-    else:  # Category
+    else:  # Categoría
         if not categories:
             st.warning("No hay categorías disponibles en la base de datos.")
             return
-        selected = st.sidebar.selectbox("Category", categories)
+        selected = st.sidebar.selectbox("Categoría", categories)
         filter_label = selected
         logger.info("Filter: category=%s", selected)
 
@@ -169,26 +169,26 @@ def render() -> None:
 
     with col1:
         total_next = next_season["predicted"].sum() if not next_season.empty else 0.0
-        _kpi("Projected Units — Next Season", _format_units(total_next))
+        _kpi("Unidades Proyectadas — Próxima Temporada", _format_units(total_next))
 
     with col2:
         total_hist = historical["actual"].sum() if not historical.empty else 0.0
-        _kpi("Actual Units — Last Season", _format_units(total_hist))
+        _kpi("Unidades Reales — Última Temporada", _format_units(total_hist))
 
     with col3:
         if total_hist > 0:
             delta_pct = (total_next - total_hist) / total_hist * 100
-            _kpi("YoY Change", f"{delta_pct:+.1f}%")
+            _kpi("Variación Anual", f"{delta_pct:+.1f}%")
         else:
-            _kpi("YoY Change", "N/A")
+            _kpi("Variación Anual", "N/A")
 
     st.divider()
 
     # ── Gráfico principal: histórico + proyección ─────────────────────────────
-    st.subheader("📈 Trend: Historical vs Next Season Forecast")
+    st.subheader("📈 Tendencia: Histórico vs Pronóstico Próxima Temporada")
 
     chart_df = df.set_index("date")[["actual", "predicted"]].rename(
-        columns={"actual": "Actual (historical)", "predicted": "Forecast"}
+        columns={"actual": "Real (histórico)", "predicted": "Pronóstico"}
     )
     # Solo mostrar columnas con al menos un valor
     chart_df = chart_df[[c for c in chart_df.columns if chart_df[c].notna().any()]]
@@ -196,22 +196,22 @@ def render() -> None:
 
     # ── Tabla próxima temporada ───────────────────────────────────────────────
     if not next_season.empty:
-        st.subheader("🔮 Next Season Projection (detail)")
+        st.subheader("🔮 Detalle de Proyección — Próxima Temporada")
         display = next_season[["date", "predicted"]].copy()
-        display.columns = ["Month", "Predicted Units"]
+        display.columns = ["Mes", "Unidades Proyectadas"]
         display["Month"] = display["Month"].dt.strftime("%Y-%m")
         display["Predicted Units"] = display["Predicted Units"].map("{:,.0f}".format)
         st.dataframe(display, use_container_width=True, hide_index=True)
     else:
-        st.info("No hay pronósticos futuros disponibles (próxima temporada).")
+        st.info("No hay pronósticos futuros disponibles para la selección actual.")
 
     # ── Tabla histórico ───────────────────────────────────────────────────────
-    with st.expander("📋 Historical data (backtest)"):
+    with st.expander("📋 Datos históricos (backtest)"):
         if historical.empty:
             st.write("Sin datos históricos con valores reales.")
         else:
             hist_display = historical[["date", "predicted", "actual"]].copy()
-            hist_display.columns = ["Month", "Predicted", "Actual"]
+            hist_display.columns = ["Mes", "Pronóstico", "Real"]
             hist_display["Month"] = hist_display["Month"].dt.strftime("%Y-%m")
             hist_display["Predicted"] = hist_display["Predicted"].map("{:,.0f}".format)
             hist_display["Actual"] = hist_display["Actual"].map("{:,.0f}".format)

@@ -37,10 +37,10 @@ def _load_open_issues() -> list[dict]:
 def render():
     """Renderiza la página de feedback de negocio."""
     logger = get_logger(__name__)
-    st.title("💬 Business Feedback")
+    st.title("💬 Retroalimentación del Negocio")
 
-    # ── Formulario de envío ──────────────────────────────────────────────────
-    st.subheader("Submit Feedback")
+    # ── Formulario de envío ───────────────────────────────────────────────────────────
+    st.subheader("Enviar Retroalimentación")
 
     try:
         shop_options = _load_shop_options()
@@ -56,14 +56,14 @@ def render():
 
     col1, col2 = st.columns(2)
     with col1:
-        selected_shop = st.selectbox("Store", list(shop_options.keys()))
+        selected_shop = st.selectbox("Tienda", list(shop_options.keys()))
     with col2:
-        selected_product = st.selectbox("Product", list(product_options.keys()))
+        selected_product = st.selectbox("Producto", list(product_options.keys()))
 
-    reported_by = st.text_input("Your name (optional)")
-    comment = st.text_area("Comment", placeholder="Describe the issue with this forecast...")
+    reported_by = st.text_input("Tu nombre (opcional)")
+    comment = st.text_area("Comentario", placeholder="Describe el problema con este pronóstico...")
 
-    if st.button("Submit Feedback"):
+    if st.button("Enviar Retroalimentación"):
         if not comment.strip():
             st.warning("El comentario no puede estar vacío.")
             return
@@ -92,7 +92,7 @@ def render():
             logger.exception("Error guardando feedback: %s", exc)
 
     # ── Tabla de issues reportados ───────────────────────────────────────────
-    st.subheader("Reported Issues")
+    st.subheader("Retroalimentación Registrada")
     try:
         issues = _load_open_issues()
     except Exception as exc:
@@ -105,5 +105,5 @@ def render():
     else:
         import pandas as pd
         df = pd.DataFrame(issues)
-        df.columns = ["ID", "Store", "Product", "Comment", "Status", "Reported By", "Created At"]
+        df.columns = ["ID", "Tienda", "Producto", "Comentario", "Estado", "Reportado por", "Fecha"]
         st.dataframe(df, use_container_width=True)

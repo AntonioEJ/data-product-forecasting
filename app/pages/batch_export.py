@@ -25,7 +25,7 @@ def _load_category_options() -> list[str]:
 
 
 def _query_forecasts(scope: str, filter_value: str | int) -> pd.DataFrame:
-    if scope == "Store":
+    if scope == "Tienda":
         sql = """
             SELECT s.shop_name, pr.item_name, pr.category_name,
                    p.forecast_date, p.predicted_units, p.actual_units
@@ -35,7 +35,7 @@ def _query_forecasts(scope: str, filter_value: str | int) -> pd.DataFrame:
             WHERE p.shop_id = :val
             ORDER BY p.forecast_date, pr.category_name, pr.item_name
         """
-    elif scope == "Category":
+    elif scope == "Categoría":
         sql = """
             SELECT s.shop_name, pr.item_name, pr.category_name,
                    p.forecast_date, p.predicted_units, p.actual_units
@@ -45,7 +45,7 @@ def _query_forecasts(scope: str, filter_value: str | int) -> pd.DataFrame:
             WHERE pr.category_name = :val
             ORDER BY p.forecast_date, s.shop_name, pr.item_name
         """
-    else:  # Full Catalog
+    else:  # Catálogo Completo
         sql = """
             SELECT s.shop_name, pr.item_name, pr.category_name,
                    p.forecast_date, p.predicted_units, p.actual_units
@@ -74,36 +74,36 @@ def _register_batch_job(scope: str, filter_value: str) -> None:
 def render():
     """Renderiza la página de exportación batch."""
     logger = get_logger(__name__)
-    st.title("📦 Batch Export")
+    st.title("📦 Exportación Masiva")
 
-    scope = st.selectbox("Export scope", ["Store", "Category", "Full Catalog"])
+    scope = st.selectbox("Alcance de exportación", ["Tienda", "Categoría", "Catálogo Completo"])
 
     filter_value: str | int = ""
     try:
-        if scope == "Store":
+        if scope == "Tienda":
             shop_options = _load_shop_options()
             if not shop_options:
                 st.warning("No hay tiendas disponibles.")
                 return
-            selected_name = st.selectbox("Select Store", list(shop_options.keys()))
+            selected_name = st.selectbox("Seleccionar Tienda", list(shop_options.keys()))
             filter_value = shop_options[selected_name]
 
-        elif scope == "Category":
+        elif scope == "Categoría":
             categories = _load_category_options()
             if not categories:
                 st.warning("No hay categorías disponibles.")
                 return
-            filter_value = st.selectbox("Select Category", categories)
+            filter_value = st.selectbox("Seleccionar Categoría", categories)
 
     except Exception as exc:
         st.error("Error cargando opciones de filtro.")
         logger.exception("Error cargando filtros batch: %s", exc)
         return
 
-    if st.button("Generate Export"):
-        logger.info("Batch export triggered: scope=%s, filter=%s", scope, filter_value)
+    if st.button("Generar Exportación"):
+        logger.info("Exportación batch iniciada: alcance=%s, filtro=%s", scope, filter_value)
 
-        with st.spinner("Querying data..."):
+        with st.spinner("Consultando datos..."):
             try:
                 df = _query_forecasts(scope, filter_value)
             except Exception as exc:
@@ -124,7 +124,7 @@ def render():
 
         st.success(f"Reporte listo — {len(df):,} filas")
         st.download_button(
-            label="⬇️ Download CSV",
+            label="⬇️ Descargar CSV",
             data=buffer,
             file_name=filename,
             mime="text/csv",

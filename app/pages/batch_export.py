@@ -76,7 +76,7 @@ def render():
     logger = get_logger(__name__)
     st.title("📦 Exportación Masiva")
 
-    scope = st.selectbox("Alcance de exportación", ["Tienda", "Categoría", "Catálogo Completo"])
+    scope = st.selectbox("Selecciona lo que deseas exportar:", ["Tienda", "Categoría", "Catálogo Completo"])
 
     filter_value: str | int = ""
     try:
@@ -85,7 +85,7 @@ def render():
             if not shop_options:
                 st.warning("No hay tiendas disponibles.")
                 return
-            selected_name = st.selectbox("Seleccionar Tienda", list(shop_options.keys()))
+            selected_name = st.selectbox("Selecciona la tienda:", list(shop_options.keys()))
             filter_value = shop_options[selected_name]
 
         elif scope == "Categoría":

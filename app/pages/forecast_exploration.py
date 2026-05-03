@@ -199,8 +199,8 @@ def render() -> None:
         st.subheader("🔮 Detalle de Proyección — Próxima Temporada")
         display = next_season[["date", "predicted"]].copy()
         display.columns = ["Mes", "Unidades Proyectadas"]
-        display["Month"] = display["Month"].dt.strftime("%Y-%m")
-        display["Predicted Units"] = display["Predicted Units"].map("{:,.0f}".format)
+        display["Mes"] = display["Mes"].dt.strftime("%Y-%m")
+        display["Unidades Proyectadas"] = display["Unidades Proyectadas"].map("{:,.0f}".format)
         st.dataframe(display, use_container_width=True, hide_index=True)
     else:
         st.info("No hay pronósticos futuros disponibles para la selección actual.")

@@ -99,7 +99,7 @@ def _format_units(n: float) -> str:
 def render() -> None:
     """Renderiza la página de exploración de pronósticos."""
     logger = get_logger(__name__)
-    st.title("🔎 Exploración de Pronósticos")
+    st.title("Exploración de Pronósticos")
 
     # ── Sidebar: modo de filtro ───────────────────────────────────────────────
     st.sidebar.header("Filtros")

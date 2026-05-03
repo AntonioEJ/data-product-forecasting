@@ -74,7 +74,7 @@ def _register_batch_job(scope: str, filter_value: str) -> None:
 def render():
     """Renderiza la página de exportación batch."""
     logger = get_logger(__name__)
-    st.title("📦 Exportación Masiva")
+    st.title("Exportación Masiva")
 
     scope = st.selectbox("Selecciona lo que deseas exportar:", ["Tienda", "Categoría", "Catálogo Completo"])
 

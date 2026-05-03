@@ -36,6 +36,12 @@ def main() -> None:
         layout="wide",
     )
 
+    # Ocultar navegación automática de Streamlit
+    st.markdown(
+        "<style>[data-testid='stSidebarNav'] {display: none;}</style>",
+        unsafe_allow_html=True,
+    )
+
     st.sidebar.title("📈 Pronóstico de Demanda")
 
     page = st.sidebar.radio(

@@ -37,7 +37,7 @@ def _load_open_issues() -> list[dict]:
 def render():
     """Renderiza la página de feedback de negocio."""
     logger = get_logger(__name__)
-    st.title("💬 Retroalimentación del Negocio")
+    st.title("Retroalimentación del Negocio")
 
     # ── Formulario de envío ───────────────────────────────────────────────────────────
     st.subheader("Enviar Retroalimentación")

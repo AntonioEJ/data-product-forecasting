@@ -43,7 +43,7 @@ def _load_backtest_sample() -> pd.DataFrame:
 def render():
     """Renderiza la página de evaluación de modelo."""
     logger = get_logger(__name__)
-    st.title("📊 Evaluación del Modelo")
+    st.title("Evaluación del Modelo")
     logger.info("Rendering model evaluation page")
 
     # ── Métricas por categoría ────────────────────────────────────────────────────────────

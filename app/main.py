@@ -16,10 +16,10 @@ from utils.logging import get_logger, setup_logging
 
 
 _PAGES = {
-    " Exploración de Pronósticos": forecast_exploration,
-    " Exportación Masiva": batch_export,
-    " Evaluación del Modelo": model_evaluation,
-    " Retroalimentación del Negocio": business_feedback,
+    "Exploración de Pronósticos": forecast_exploration,
+    "Exportación Masiva": batch_export,
+    "Evaluación del Modelo": model_evaluation,
+    "Retroalimentación del Negocio": business_feedback,
 }
 
 
@@ -42,7 +42,7 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    st.sidebar.title("📈 Pronóstico de Demanda")
+    st.sidebar.title("Pronóstico de Demanda")
 
     page = st.sidebar.radio(
         "Menú",

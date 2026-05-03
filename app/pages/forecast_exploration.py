@@ -212,7 +212,7 @@ def render() -> None:
         else:
             hist_display = historical[["date", "predicted", "actual"]].copy()
             hist_display.columns = ["Mes", "Pronóstico", "Real"]
-            hist_display["Month"] = hist_display["Month"].dt.strftime("%Y-%m")
-            hist_display["Predicted"] = hist_display["Predicted"].map("{:,.0f}".format)
-            hist_display["Actual"] = hist_display["Actual"].map("{:,.0f}".format)
+            hist_display["Mes"] = hist_display["Mes"].dt.strftime("%Y-%m")
+            hist_display["Pronóstico"] = hist_display["Pronóstico"].map("{:,.0f}".format)
+            hist_display["Real"] = hist_display["Real"].map("{:,.0f}".format)
             st.dataframe(hist_display, use_container_width=True, hide_index=True)

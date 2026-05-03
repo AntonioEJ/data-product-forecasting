@@ -43,11 +43,11 @@ def _load_backtest_sample() -> pd.DataFrame:
 def render():
     """Renderiza la página de evaluación de modelo."""
     logger = get_logger(__name__)
-    st.title("📊 Model Evaluation")
+    st.title("Evaluación del Modelo")
     logger.info("Rendering model evaluation page")
 
-    # ── Métricas por categoría ───────────────────────────────────────────────
-    st.subheader("Metrics by Category (Model vs Naive Baseline)")
+    # ── Métricas por categoría ────────────────────────────────────────────────────────────
+    st.subheader("Métricas por Categoría (Modelo vs Baseline Naive)")
     try:
         metrics = _load_metrics()
     except Exception as exc:
@@ -59,13 +59,13 @@ def render():
         st.info("No hay métricas disponibles todavía. Ejecuta el pipeline de evaluación primero.")
     else:
         display = metrics[["category_name", "mae", "mae_naive", "rmse", "rmse_naive", "computed_at"]].copy()
-        display.columns = ["Category", "MAE (Model)", "MAE (Naive)", "RMSE (Model)", "RMSE (Naive)", "Computed At"]
+        display.columns = ["Categoría", "MAE (Modelo)", "MAE (Naive)", "RMSE (Modelo)", "RMSE (Naive)", "Calculado el"]
         st.dataframe(display, use_container_width=True)
 
         # Comparación visual MAE
-        st.subheader("MAE: Model vs Naive")
+        st.subheader("MAE: Modelo vs Naive")
         chart_data = metrics.set_index("category_name")[["mae", "mae_naive"]]
-        chart_data.columns = ["Model MAE", "Naive MAE"]
+        chart_data.columns = ["MAE Modelo", "MAE Naive"]
         st.bar_chart(chart_data)
 
     # ── Backtest: predicho vs real ───────────────────────────────────────────
@@ -78,6 +78,8 @@ def render():
         return
 
     if backtest.empty:
-        st.info("No hay datos de backtest disponibles (actual_units vacío).")
+        st.info("No hay datos de backtest disponibles (sin valores reales registrados).")
     else:
-        st.line_chart(backtest.set_index("date")[["predicted", "actual"]])
+        st.line_chart(backtest.set_index("date")[["predicted", "actual"]].rename(
+            columns={"predicted": "Predicho", "actual": "Real"}
+        ))

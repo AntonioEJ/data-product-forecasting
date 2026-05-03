@@ -15,47 +15,43 @@ from app.pages import (
 from utils.logging import get_logger, setup_logging
 
 
+_PAGES = {
+    "Exploración de Pronósticos": forecast_exploration,
+    "Exportación Masiva": batch_export,
+    "Evaluación del Modelo": model_evaluation,
+    "Retroalimentación del Negocio": business_feedback,
+}
+
+
 def main() -> None:
     """Inicializa la aplicación y maneja la navegación."""
-    # Inicializar logging PRIMERO
     setup_logging()
 
-    # Crear logger después
     logger = get_logger(__name__)
-    logger.info("Starting Streamlit application")
+    logger.info("Iniciando aplicación Streamlit")
 
-    # Configurar app
     st.set_page_config(
-        page_title="data-product-forecasting",
+        page_title="Pronóstico de Demanda",
+        page_icon="📈",
         layout="wide",
     )
 
-    st.sidebar.title("📈 data-product-forecasting")
-
-    page = st.sidebar.radio(
-        "Navegación",
-        (
-            "Exploración de Pronóstico",
-            "Exportación Batch",
-            "Evaluación de Modelo",
-            "Feedback de Negocio",
-        ),
+    # Ocultar navegación automática de Streamlit
+    st.markdown(
+        "<style>[data-testid='stSidebarNav'] {display: none;}</style>",
+        unsafe_allow_html=True,
     )
 
-    logger.info(f"User selected page: {page}")
+    st.sidebar.title("Pronóstico de Demanda")
 
-    # Routing
-    if page == "Exploración de Pronóstico":
-        forecast_exploration.render()
+    page = st.sidebar.radio(
+        "Menú",
+        list(_PAGES.keys()),
+    )
 
-    elif page == "Exportación Batch":
-        batch_export.render()
+    logger.info("Página seleccionada: %s", page)
 
-    elif page == "Evaluación de Modelo":
-        model_evaluation.render()
-
-    elif page == "Feedback de Negocio":
-        business_feedback.render()
+    _PAGES[page].render()
 
 
 if __name__ == "__main__":

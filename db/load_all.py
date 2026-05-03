@@ -12,7 +12,7 @@ from utils.logging import get_logger, setup_logging
 logger = get_logger(__name__)
 
 # Rutas por defecto relativas al directorio de trabajo
-_ITEMS = Path("data/raw/items.csv")
+_ITEMS = Path("data/raw/items_en.csv")
 _CATEGORIES = Path("data/raw/item_categories_en.csv")
 _SHOPS = Path("data/raw/shops_en.csv")
 _BACKTEST = Path("artifacts/predictions/backtest.parquet")
@@ -101,6 +101,13 @@ def main(dry_run: bool = False) -> dict:
 
     logger.info("Inicializando schema en RDS")
     init_db()
+
+    # Borrar tablas hijas antes que las padres para no violar FK constraints
+    from db.schema import feedback, predictions as pred_tbl
+
+    with engine.begin() as conn:
+        conn.execute(feedback.delete())
+        conn.execute(pred_tbl.delete())
 
     logger.info("Cargando shops")
     n_shops = load_shops(_SHOPS, engine)

@@ -51,6 +51,7 @@ metrics = Table(
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("category_name", String(200), nullable=False),
+    Column("n_obs", Integer, nullable=False),
     Column("mae", Float, nullable=False),
     Column("rmse", Float, nullable=False),
     Column("mae_naive", Float, nullable=False),

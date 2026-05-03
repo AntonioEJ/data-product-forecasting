@@ -84,7 +84,7 @@ def test_predictions_fk_a_batch_jobs():
 def test_metrics_columnas_requeridas():
     cols = {c.name for c in metrics.columns}
     assert {
-        "category_name", "mae", "rmse",
+        "category_name", "n_obs", "mae", "rmse",
         "mae_naive", "rmse_naive", "computed_at",
     } <= cols
 

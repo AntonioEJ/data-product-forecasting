@@ -1,25 +1,24 @@
 # Forecast Demand — Data Product POC en 1C Company
 
 **Autores:** José Antonio Esparza · Gustavo Pardo  
-##  URLs clave
-
-| Recurso | URL |
-|---|---|
-| Repositorio GitHub | https://github.com/AntonioEJ/data-product-forecasting |
-| App en producción (AWS) | http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com |
+**Repositorio:** https://github.com/AntonioEJ/data-product-forecasting  
+**App en producción:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
 
 
 ## 1. Resumen Ejecutivo
 
 1C Company opera 60 tiendas con un catálogo de más de 22,000 productos repartidos en 84 categorías. El equipo de planeación toma cada mes la decisión de cuánto comprar de cada producto para cada tienda, y hoy lo hace con intuición y experiencia. Eso funciona, pero deja dinero sobre la mesa: hay sobreinventario en categorías de baja rotación y faltantes en productos que se mueven rápido.
 
-Este proyecto entrega un producto de datos que pronostica las ventas mensuales del siguiente período por combinación tienda-producto, y deja al equipo de negocio una interfaz web para explorar los pronósticos, exportarlos y dar feedback cuando alguno no cuadra.
+Este proyecto entrega un **producto de datos de pronóstico de demanda** que transforma ~2.9 millones de registros históricos de ventas en toma de decisiones ya que pronostica las ventas mensuales del siguiente período por combinación tienda-producto, y deja al equipo de negocio una interfaz web para explorar los pronósticos, exportarlos y dar feedback cuando alguno no cuadra.
 
-**Lo que conseguimos:**
+**¿Qué valor genera?**
 
+- Los equipos de Finanzas pueden ver la proyección de la próxima temporada por tienda o categoría en segundos.
 - El modelo (LightGBM con features de retraso temporal) baja el error de predicción **74% respecto al baseline naive**: MAE de 0.30 vs 1.18 unidades por predicción.
+- Planeación puede exportar un CSV de predicciones filtradas directamente desde el browser, sin depender de un analista.
 - En **53 de 57 categorías evaluadas (93%)** el modelo le gana al baseline. Las 4 categorías donde no gana tienen volúmenes marginales — entre 1 y 25 observaciones, sin material para aprender.
 - El sistema produce **8,675 pronósticos** para noviembre 2015 sobre el catálogo activo, accesibles desde la app vía exploración interactiva o exportación CSV.
+- El equipo técnico puede monitorear la calidad del modelo (MAE, RMSE) y compararlo contra un baseline naive, todo desde la misma interfaz.
 - La infraestructura completa vive en AWS (PostgreSQL en RDS, Streamlit en ECS Fargate detrás de un ALB) y está versionada en CloudFormation.
 
 **Lo que esto le da a 1C:** decisiones de compra con respaldo cuantitativo, granularidad por tienda y producto, y un canal estructurado para que el equipo de tienda reporte cuando un pronóstico no le cuadra — material directo para el siguiente ciclo de mejora del modelo.
@@ -112,8 +111,6 @@ La estructura de cuatro vistas no fue arbitraria. Cada una resuelve un problema 
 | **CloudWatch** | Logs de la app y del contenedor | Centralización de logs sin infraestructura adicional |
 
 > **Diagrama de arquitectura:** ver `docs/arquitectura.md`.
-
-![Arquitectura](docs/screenshots/arquitectura.png)
 
 ---
 
@@ -344,18 +341,10 @@ El modelo le gana al baseline en el 93% de las categorías, y específicamente e
 
 ---
 
-## Reporte del POC
-
-El documento `docs/reporte.md` contiene el reporte autocontenido: descripción del problema, arquitectura, modelo de datos, evaluación, tour de la app y consideraciones de costo. Artefacto de revisión independiente del README.
-
----
-
 ## Documentación adicional
 
 - Decisiones de arquitectura: `docs/arquitectura.md`
 - Modelo de datos (ERD): `docs/erd.md`
-- Diagrama de arquitectura (editable): `docs/arquitectura.drawio`
-- Diagrama ERD (editable): `docs/erd.drawio`
 - Documentación de módulos Python: `docs/api/`
 
 ---

@@ -328,7 +328,7 @@ Para POC o desarrollo: apagar RDS e ECS fuera de horario reduce ~70% del costo.
 
 ## 11. Uso de Herramientas de IA en el Proyecto
 
-**Herramienta:** GitHub Copilot (Claude Sonnet) — asistente integrado en VS Code.
+**Herramienta:** Chat GPT, GitHub Copilot Claude Sonnet.
 
 | Área | Uso específico |
 |---|---|
@@ -357,7 +357,7 @@ El modelo le gana al baseline en el 93% de las categorías, y específicamente e
 - Decisiones de arquitectura: [docs/arquitectura.md](docs/arquitectura.md)
 - Diagrama de arquitectura (editable en draw.io): [docs/arquitectura.drawio](docs/arquitectura.drawio)
 - Modelo de datos (ERD): [docs/erd.md](docs/erd.md)
-- Documentación de módulos Python (generada con [pdoc](https://pdoc.dev)): [docs/api/](docs/api/)
+- Documentación de módulos Python con pdoc: [docs/api/index.html](docs/api/index.html)
 
 ---
 

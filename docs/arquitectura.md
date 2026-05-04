@@ -28,21 +28,26 @@
 - **Principio de mínimo privilegio:** Acceso restringido por rol IAM.
 - **Secrets fuera del código:** Cumplimiento y mejores prácticas.
 
-## Diagrama de Arquitectura (para draw.io)
+## Diagrama de Arquitectura
+
+![Diagrama de arquitectura](screenshots/arquitectura.drawio.png)
 
 ```mermaid
 graph TD
-    A[S3 Raw Data] --> B[ETL/Glue]
-    B --> C[S3 Processed Data]
-    C --> D[ML Pipeline (SageMaker/ETL)]
-    D --> E[Predictions (Batch)]
-    E --> F[RDS PostgreSQL]
-    F --> G[Streamlit App (ECS Fargate)]
-    G --> H[Business User]
-    G --> I[S3 Exported CSV (Batch)]
-    I --> J[Signed URL]
-    G --> K[Feedback]
-    K --> F
+    A[CSV Kaggle\nDatos crudos] --> B[ETL\netl/bronze.py · silver.py · features.py]
+    B --> C[Pipeline ML offline\ntraining · evaluation · inference]
+    C --> D[Artefactos parquet\npredicciones + métricas]
+    D --> E[DB Loaders idempotentes\ndb/load_*.py]
+    E --> F[RDS PostgreSQL 17\n6 tablas]
+    F --> G[Streamlit App\nECS Fargate + ALB]
+    G --> H[VP Planeación\nDirector Compras\nGerente Tienda\nCientífico de Datos]
+    G --> I[Feedback]
+    I --> F
+    J[AWS Secrets Manager] -.credenciales.-> G
+    K[ECR] -.imagen Docker.-> G
+    L[CloudFormation\ninfra/core.yaml] -.despliega.-> G
+    L -.despliega.-> F
+    M[CloudWatch] -.logs.-> G
 ```
 
 ---

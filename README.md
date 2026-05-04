@@ -352,6 +352,7 @@ El modelo le gana al baseline en el 93% de las categorías, y específicamente e
 ## Documentación adicional
 
 - Decisiones de arquitectura: [docs/arquitectura.md](docs/arquitectura.md)
+- Diagrama de arquitectura (editable en draw.io): [docs/arquitectura.drawio](docs/arquitectura.drawio)
 - Modelo de datos (ERD): [docs/erd.md](docs/erd.md)
 - Documentación de módulos Python (generada con [pdoc](https://pdoc.dev)): [docs/api/](docs/api/)
 

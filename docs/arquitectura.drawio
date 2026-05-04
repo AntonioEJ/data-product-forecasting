@@ -41,17 +41,14 @@
     <mxCell id="g_s3" value="S3 Data Lake (AWS)" style="swimlane;startSize=25;fillColor=#FFE6CC;strokeColor=#FF8000;fontStyle=1;fontSize=11;" vertex="1" parent="1">
       <mxGeometry x="435" y="100" width="170" height="230" as="geometry" />
     </mxCell>
-    <mxCell id="g_s3_1" value="raw/" style="rounded=1;fillColor=#ffffff;strokeColor=#FF8000;fontSize=10;" vertex="1" parent="g_s3">
+    <mxCell id="g_s3_2" value="bronze/" style="rounded=1;fillColor=#ffffff;strokeColor=#FF8000;fontSize=10;" vertex="1" parent="g_s3">
       <mxGeometry x="10" y="35" width="150" height="35" as="geometry" />
     </mxCell>
-    <mxCell id="g_s3_2" value="bronze/" style="rounded=1;fillColor=#ffffff;strokeColor=#FF8000;fontSize=10;" vertex="1" parent="g_s3">
+    <mxCell id="g_s3_3" value="silver/" style="rounded=1;fillColor=#ffffff;strokeColor=#FF8000;fontSize=10;" vertex="1" parent="g_s3">
       <mxGeometry x="10" y="80" width="150" height="35" as="geometry" />
     </mxCell>
-    <mxCell id="g_s3_3" value="silver/" style="rounded=1;fillColor=#ffffff;strokeColor=#FF8000;fontSize=10;" vertex="1" parent="g_s3">
-      <mxGeometry x="10" y="125" width="150" height="35" as="geometry" />
-    </mxCell>
     <mxCell id="g_s3_4" value="gold/" style="rounded=1;fillColor=#ffffff;strokeColor=#FF8000;fontSize=10;" vertex="1" parent="g_s3">
-      <mxGeometry x="10" y="170" width="150" height="35" as="geometry" />
+      <mxGeometry x="10" y="125" width="150" height="35" as="geometry" />
     </mxCell>
 
     <!-- ═══ GRUPO 3: Pipeline ML ═══ -->

@@ -2,7 +2,8 @@
 
 **Autores:** José Antonio Esparza · Gustavo Pardo  
 **Repositorio:** https://github.com/AntonioEJ/data-product-forecasting  
-**App en producción:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
+**App en producción:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com  
+**Demo en video:** [Video_Prodcto_de_Datos.mp4](Video_Prodcto_de_Datos.mp4)
 
 
 ## 1. Resumen Ejecutivo
@@ -111,6 +112,8 @@ La estructura de cuatro vistas no fue arbitraria. Cada una resuelve un problema 
 | **CloudWatch** | Logs de la app y del contenedor | Centralización de logs sin infraestructura adicional |
 
 > **Diagrama de arquitectura:** ver [docs/arquitectura.md](docs/arquitectura.md).
+
+![Diagrama de arquitectura](docs/screenshots/arquitectura.drawio.png)
 
 ---
 
@@ -352,6 +355,7 @@ El modelo le gana al baseline en el 93% de las categorías, y específicamente e
 ## Documentación adicional
 
 - Decisiones de arquitectura: [docs/arquitectura.md](docs/arquitectura.md)
+- Diagrama de arquitectura (editable en draw.io): [docs/arquitectura.drawio](docs/arquitectura.drawio)
 - Modelo de datos (ERD): [docs/erd.md](docs/erd.md)
 - Documentación de módulos Python (generada con [pdoc](https://pdoc.dev)): [docs/api/](docs/api/)
 

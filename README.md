@@ -16,7 +16,7 @@ Este proyecto entrega un **producto de datos de pronóstico de demanda** que tra
 - Los equipos de Finanzas pueden ver la proyección de la próxima temporada por tienda o categoría en segundos.
 - El modelo (LightGBM con features de retraso temporal) baja el error de predicción **74% respecto al baseline naive**: MAE de 0.30 vs 1.18 unidades por predicción.
 - Planeación puede exportar un CSV de predicciones filtradas directamente desde el browser, sin depender de un analista.
-- En **53 de 57 categorías evaluadas (93%)** el modelo le gana al baseline. Las 4 categorías donde no gana tienen volúmenes marginales — entre 1 y 25 observaciones, sin material para aprender.
+- En **53 de 57 categorías evaluadas (93%)** el modelo le gana al baseline. Las 4 categorías donde no gana tienen volúmenes marginales entre 1 y 25 observaciones, sin material para aprender.
 - El sistema produce **8,675 pronósticos** para noviembre 2015 sobre el catálogo activo, accesibles desde la app vía exploración interactiva o exportación CSV.
 - El equipo técnico puede monitorear la calidad del modelo (MAE, RMSE) y compararlo contra un baseline naive, todo desde la misma interfaz.
 - La infraestructura completa vive en AWS (PostgreSQL en RDS, Streamlit en ECS Fargate detrás de un ALB) y está versionada en CloudFormation.
@@ -110,7 +110,7 @@ La estructura de cuatro vistas no fue arbitraria. Cada una resuelve un problema 
 | **ALB** | Balanceador de carga para la app | Punto de entrada HTTP público con health checks; zero-downtime deploys |
 | **CloudWatch** | Logs de la app y del contenedor | Centralización de logs sin infraestructura adicional |
 
-> **Diagrama de arquitectura:** ver `docs/arquitectura.md`.
+> **Diagrama de arquitectura:** ver [docs/arquitectura.md](docs/arquitectura.md).
 
 ---
 
@@ -190,35 +190,43 @@ Limitaciones conocidas: el forecast cubre solo las 8,675 combinaciones tienda-pr
 
 ## 6. Aplicación Streamlit
 
-La app está desplegada en http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com con cuatro secciones:
+**URL de producción:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
+
+La app tiene cuatro vistas, cada una orientada a un usuario distinto:
+
+| Vista | Usuario objetivo | Qué responde |
+|---|---|---|
+| Exploración de Pronósticos | VP de Planeación, Gerente de Tienda | ¿Cuánto se va a vender el próximo mes? |
+| Exportación Masiva | Director de Compras, Finanzas | Descarga CSV completo sin depender del equipo técnico |
+| Evaluación del Modelo | Chief Applied Scientist | ¿El modelo le gana al baseline naive? |
+| Retroalimentación del Negocio | Gerente de Tienda | Reportar cuando un pronóstico no cuadra |
 
 ### Exploración de Pronósticos
-Filtro por tienda o categoría. Muestra el histórico predicho vs real y la proyección de la próxima temporada. Responde: *"¿Cuánto se va a vender el próximo mes en mi tienda?"*
+
+Filtro por tienda o categoría. Muestra el histórico predicho vs real y la proyección de la próxima temporada.
+
+![Exploración por tienda](docs/screenshots/app_forecast_tienda.png)
+*Filtro por tienda*
+
+![Próxima temporada](docs/screenshots/app_forecast_temporada.png)
+*Proyección próxima temporada*
 
 ### Exportación Masiva
+
 CSV descargable filtrado por tienda, categoría o catálogo completo. Sin acceso a SQL, sin depender del equipo técnico.
 
-### Evaluación del Modelo
-MAE y RMSE globales y por categoría vs baseline naive. Scatter chart predicho vs real con filtros por categoría y tienda.
-
-### Retroalimentación del Negocio
-Reporte de problemas por item_id y tienda. Historial filtrable por estado: abierto, revisado, resuelto.
-
-### Screenshots de la aplicación
-
-**Exploración de Pronósticos — filtro por tienda:**
-![Exploración por tienda](docs/screenshots/app_forecast_tienda.png)
-
-**Exploración de Pronósticos — proyección próxima temporada:**
-![Próxima temporada](docs/screenshots/app_forecast_temporada.png)
-
-**Exportación Masiva:**
 ![Exportación batch](docs/screenshots/app_batch_export.png)
 
-**Evaluación del Modelo — métricas globales y por categoría:**
+### Evaluación del Modelo
+
+MAE y RMSE globales y por categoría vs baseline naive. Scatter chart predicho vs real con filtros por categoría y tienda.
+
 ![Evaluación modelo](docs/screenshots/app_model_evaluation.png)
 
-**Retroalimentación del Negocio:**
+### Retroalimentación del Negocio
+
+Reporte de problemas por item_id y tienda. Historial filtrable por estado: abierto, revisado, resuelto.
+
 ![Feedback negocio](docs/screenshots/app_business_feedback.png)
 
 ---
@@ -327,7 +335,7 @@ Para POC o desarrollo: apagar RDS e ECS fuera de horario reduce ~70% del costo.
 | Comandos AWS CLI | Sintaxis de `aws ecs`, `aws ecr`, `aws cloudformation` |
 | Debugging | Interpretación de stack traces |
 
-El diseño de la arquitectura, las decisiones de modelado, el schema, el pipeline ETL, la lógica de las vistas, el CloudFormation y los tests son trabajo original del equipo. Las herramientas de IA se usaron como apoyo puntual — equivalente a documentación oficial o Stack Overflow.
+El diseño de la arquitectura, las decisiones de modelado, el schema, el pipeline ETL, la lógica de las vistas, el CloudFormation y los tests son trabajo original del equipo. Las herramientas de IA se usaron como apoyo puntual — equivalente a documentación oficial y/o Stack Overflow u otras fuentes de apoyo.
 
 ---
 
@@ -343,9 +351,9 @@ El modelo le gana al baseline en el 93% de las categorías, y específicamente e
 
 ## Documentación adicional
 
-- Decisiones de arquitectura: `docs/arquitectura.md`
-- Modelo de datos (ERD): `docs/erd.md`
-- Documentación de módulos Python: `docs/api/`
+- Decisiones de arquitectura: [docs/arquitectura.md](docs/arquitectura.md)
+- Modelo de datos (ERD): [docs/erd.md](docs/erd.md)
+- Documentación de módulos Python (generada con [pdoc](https://pdoc.dev)): [docs/api/](docs/api/)
 
 ---
 

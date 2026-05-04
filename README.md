@@ -2,7 +2,8 @@
 
 **Autores:** José Antonio Esparza · Gustavo Pardo  
 **Repositorio:** https://github.com/AntonioEJ/data-product-forecasting  
-**App en producción:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
+**App en producción:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com  
+**Demo en video:** [Video_Prodcto_de_Datos.mp4](Video_Prodcto_de_Datos.mp4)
 
 
 ## 1. Resumen Ejecutivo

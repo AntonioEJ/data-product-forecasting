@@ -1,64 +1,102 @@
-# Forecast Demand — Data Product POC
+# Forecast Demand — Data Product POC en 1C Company
 
 **Autores:** José Antonio Esparza · Gustavo Pardo  
-**Repositorio:** https://github.com/AntonioEJ/data-product-forecasting  
-**App en producción:** http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com
-
----
-
-## 1. El problema de negocio
-
-Las áreas de Finanzas y Planeación de una empresa de retail con 60 tiendas y más de 22,000 productos toman decisiones de inventario y compra con visibilidad limitada de la demanda futura. El resultado habitual: sobrestock en productos lentos, quiebre de stock en temporadas clave y pronósticos hechos a mano en Excel que no escalan.
-
-Este proyecto construye un **producto de datos de pronóstico de demanda** que transforma ~2.9 millones de registros históricos de ventas en predicciones mensuales accionables, accesibles para cualquier usuario de negocio a través de una aplicación web sin necesidad de conocimientos técnicos.
-
-**¿Qué valor genera?**
-
-- Los equipos de Finanzas pueden ver la proyección de la próxima temporada por tienda o categoría en segundos.
-- Planeación puede exportar un CSV de predicciones filtradas directamente desde el browser, sin depender de un analista.
-- El negocio puede reportar discrepancias entre el pronóstico y la realidad, cerrando el ciclo de mejora continua.
-- El equipo técnico puede monitorear la calidad del modelo (MAE, RMSE) y compararlo contra un baseline naive, todo desde la misma interfaz.
-
----
-
-## 2. URLs clave
+##  URLs clave
 
 | Recurso | URL |
 |---|---|
 | Repositorio GitHub | https://github.com/AntonioEJ/data-product-forecasting |
 | App en producción (AWS) | http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com |
 
+
+## 1. Resumen Ejecutivo
+
+1C Company opera 60 tiendas con un catálogo de más de 22,000 productos repartidos en 84 categorías. El equipo de planeación toma cada mes la decisión de cuánto comprar de cada producto para cada tienda, y hoy lo hace con intuición y experiencia. Eso funciona, pero deja dinero sobre la mesa: hay sobreinventario en categorías de baja rotación y faltantes en productos que se mueven rápido.
+
+Este proyecto entrega un producto de datos que pronostica las ventas mensuales del siguiente período por combinación tienda-producto, y deja al equipo de negocio una interfaz web para explorar los pronósticos, exportarlos y dar feedback cuando alguno no cuadra.
+
+**Lo que conseguimos:**
+
+- El modelo (LightGBM con features de retraso temporal) baja el error de predicción **74% respecto al baseline naive**: MAE de 0.30 vs 1.18 unidades por predicción.
+- En **53 de 57 categorías evaluadas (93%)** el modelo le gana al baseline. Las 4 categorías donde no gana tienen volúmenes marginales — entre 1 y 25 observaciones, sin material para aprender.
+- El sistema produce **8,675 pronósticos** para noviembre 2015 sobre el catálogo activo, accesibles desde la app vía exploración interactiva o exportación CSV.
+- La infraestructura completa vive en AWS (PostgreSQL en RDS, Streamlit en ECS Fargate detrás de un ALB) y está versionada en CloudFormation.
+
+**Lo que esto le da a 1C:** decisiones de compra con respaldo cuantitativo, granularidad por tienda y producto, y un canal estructurado para que el equipo de tienda reporte cuando un pronóstico no le cuadra — material directo para el siguiente ciclo de mejora del modelo.
+
 ---
 
-## 3. Arquitectura de la solución
+## 2. Voz del Cliente
 
-El sistema está diseñado como una arquitectura de datos por capas, donde cada componente tiene una responsabilidad clara y puede evolucionar de forma independiente.
+Antes de tocar código nos sentamos a entender quién iba a usar esto. Identificamos siete roles distintos en 1C que tendrían algo que ganar o perder con el producto. Cada uno tiene una pregunta concreta que necesita responder, y la app está diseñada alrededor de esas preguntas:
+
+| Stakeholder | Lo que necesita | Dónde lo resuelve |
+|---|---|---|
+| VP de Planeación | "¿Cuántas unidades vamos a vender de cada categoría el mes que viene?" | Vista 1: Forecast Exploration |
+| Director de Compras | "Necesito el catálogo entero en un Excel para mi análisis." | Vista 2: Batch Export |
+| Chief Applied Scientist | "Demuéstrenme que el modelo agrega valor sobre lo que ya hacemos." | Vista 3: Model Evaluation |
+| Gerente de Tienda | "Este producto siempre se vende más de lo que dicen ustedes — quiero reportarlo." | Vista 4: Business Feedback |
+| Equipo de Datos | "Tengo que poder mantener y extender esto sin volverme loco." | Pipeline modular con tests, Docker, CFN |
+| Equipo de TI | "La infra tiene que vivir en nuestra cuenta y poder operarla nosotros." | Stack completo en AWS, IaC |
+| Auditoría | "Necesito saber qué predicción se generó cuándo y quién dijo qué del feedback." | Tablas con `created_at`, autor de feedback |
+
+La estructura de cuatro vistas no fue arbitraria. Cada una resuelve un problema concreto de un usuario concreto. La alternativa habría sido hacer una vista monolítica que tratara de servirles a todos a la vez, y eso es justamente lo que produce los dashboards que nadie usa.
+
+---
+
+## 3. Arquitectura del Sistema
+
+### 3.1 Vista de alto nivel
 
 ```
-Kaggle (fuente de datos históricos)
-       │
-       ▼
-  S3 — Data Lake (raw)
-       │
-       ▼
-  ETL con arquitectura Medallion
-  ├── Bronze: CSV → Parquet en S3
-  ├── Silver: datos limpios y normalizados
-  └── Gold:  tabla analítica vía Athena
-       │
-       ▼
-  Feature Engineering → LightGBM
-       │
-       ▼
-  RDS PostgreSQL (predicciones precomputadas)
-       │
-       ▼
-  Streamlit en ECS Fargate (app web para el negocio)
+┌─────────────────────┐
+│ Datos crudos (CSV)  │  Bronze: items.csv, shops.csv,
+│ Kaggle Future Sales │  item_categories_en.csv, sales_train.csv
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│ ETL en memoria      │  build_features: lags, rolling means
+│ (etl/features.py)   │  make_modeling_dataset, temporal_split
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│ Pipeline ML         │  training/ → modelo LightGBM
+│ (offline, local)    │  evaluation/ → métricas por categoría
+│                     │  inference/ → backtest + forecasts
+└──────────┬──────────┘
+           ↓ parquets
+┌─────────────────────┐
+│ Loaders idempotentes│  db/load_*.py: cargan parquets a RDS
+│ (db/)               │  con DELETE+INSERT controlado
+└──────────┬──────────┘
+           ↓ INSERT
+┌─────────────────────┐
+│ PostgreSQL en RDS   │  6 tablas: products, shops,
+│ (AWS)               │  predictions, metrics, feedback,
+│                     │  batch_jobs
+└──────────┬──────────┘
+           ↑ SELECT/INSERT
+┌─────────────────────┐
+│ Streamlit App       │  4 vistas conectadas a RDS
+│ (ECS Fargate + ALB) │  con cache @st.cache_data(ttl=300)
+└─────────────────────┘
 ```
 
-La decisión más importante de diseño es que **las predicciones se calculan en batch y se persisten en RDS**, no en tiempo real. Esto mantiene la app rápida y predecible para el usuario, desacopla el pipeline de ML del frontend, y permite escalar ambos de forma independiente.
+### 3.2 Las piezas que importan
 
-### Servicios AWS utilizados
+**Pipeline de modelo (corre offline, en local).** Tres pasos independientes que se ejecutan como módulos de Python:
+
+- `training/` entrena el LightGBM con early stopping. Con 200K filas tarda 25 segundos.
+- `evaluation/` calcula métricas globales y por categoría sobre el set de validación temporal.
+- `inference/` genera dos artefactos: el backtest (47,324 predicciones con ground truth real) y el forecast (8,675 predicciones para noviembre 2015, sin ground truth porque es el futuro).
+
+**Persistencia (RDS PostgreSQL 17.4).** Seis tablas con foreign keys explícitas. Las predicciones de backtest y de forecast viven en la misma tabla — lo que las distingue es que `actual_units IS NULL` para el forecast y tiene valor para el backtest. Esto evitó duplicar schema y queries.
+
+**Capa de aplicación (Streamlit).** Cuatro vistas independientes que comparten un solo helper de queries (`app/components/db_helpers.py`). Cada query está cacheada por 5 minutos — Streamlit re-ejecuta el script entero en cada click, así que sin cache estaríamos haciendo decenas de queries por minuto.
+
+**Infraestructura (CloudFormation).** Un solo template (`infra/core.yaml`) que despliega VPC, subnets, RDS, ECR, ECS Fargate, ALB y Secrets Manager. Idempotente: se puede correr cuantas veces quieras.
+
+### 3.3 Servicios AWS utilizados
 
 | Servicio | Rol en el sistema | Por qué este servicio |
 |---|---|---|
@@ -69,84 +107,105 @@ La decisión más importante de diseño es que **las predicciones se calculan en
 | **ECS Fargate** | Ejecuta la app Streamlit en contenedor | Serverless: sin gestión de servidores, escalado automático, pago por uso |
 | **ECR** | Registro de imágenes Docker | Control de versiones de imágenes, integrado con ECS y IAM |
 | **CloudFormation** | Infraestructura como código | Stack completo reproducible: RDS + ECS + ALB + Secrets Manager en un solo comando |
-| **Secrets Manager** | Gestión de credenciales de RDS | Las contraseñas nunca están en código ni en variables de entorno hardcodeadas en producción |
-| **ALB** | Balanceador de carga para la app | Punto de entrada HTTP público con health checks; permite zero-downtime deploys |
+| **Secrets Manager** | Gestión de credenciales de RDS | Las contraseñas nunca están en código ni hardcodeadas en producción |
+| **ALB** | Balanceador de carga para la app | Punto de entrada HTTP público con health checks; zero-downtime deploys |
 | **CloudWatch** | Logs de la app y del contenedor | Centralización de logs sin infraestructura adicional |
 
-> **Diagrama de arquitectura:** ver `docs/arquitectura.md` o exportar el archivo `.drawio` en `docs/`.
+> **Diagrama de arquitectura:** ver `docs/arquitectura.md`.
 
 ![Arquitectura](docs/screenshots/arquitectura.png)
 
 ---
 
-## 4. Flujo end-to-end del sistema
+## 4. Decisiones de Diseño y Trade-offs
 
-### Paso 1 — Ingesta de datos
-Los datos históricos de ventas provienen del dataset público [Predict Future Sales](https://www.kaggle.com/c/competitive-data-science-predict-future-sales) de Kaggle (~2.9M registros). Se descargan con la API oficial de Kaggle y se almacenan en `data/raw/`. Los archivos no se versionan en Git.
+### 4.1 Pre-cómputo offline en lugar de inferencia en vivo
 
-### Paso 2 — ETL con arquitectura Medallion
-El pipeline ETL (`etl/`) transforma los datos en tres capas:
+**La decisión:** las predicciones se generan offline y se persisten en RDS. Streamlit solo lee.
 
-- **Bronze**: los CSV originales se convierten a Parquet y se suben a S3. Se registran en Glue Data Catalog. Sin transformaciones — reflejo fiel del dato crudo.
-- **Silver**: los datos limpios y normalizados (`data/prep/`) se suben a S3 en formato Parquet. Incluye corrección de tipos, manejo de nulos y traducción de catálogos al inglés.
-- **Gold**: una consulta CTAS en Athena genera la tabla analítica consolidada `forecasting_gold.ventas_analitica`, que combina ventas, productos y tiendas en una sola vista optimizada para ML.
+**Por qué:** un modelo de forecasting mensual no necesita inferencia en tiempo real. Pre-computar evita latencia, simplifica la arquitectura (no hace falta endpoint SageMaker), reduce costos y permite cachear sin remordimiento.
 
-### Paso 3 — Feature Engineering
-El script `etl/features.py` genera lags mensuales y medias móviles sobre la tabla Gold. El resultado es `data/prep/monthly_with_lags.csv`, el dataset de entrenamiento del modelo.
+**Lo que sacrificamos:** las predicciones se actualizan solo cuando alguien re-ejecuta el pipeline. Para ciclos mensuales esto está bien.
 
-### Paso 4 — Modelo y predicciones
-El componente de modelado (desarrollado por otro miembro del equipo) entrena un modelo **LightGBM** con los features generados y produce predicciones batch por tienda, producto y mes. Las predicciones se cargan en RDS con el script `db/load_predictions.py`.
+### 4.2 Una sola tabla de predicciones para backtest y forecast
 
-### Paso 5 — Persistencia y exposición
-Las predicciones, métricas del modelo y datos de catálogo quedan almacenados en RDS PostgreSQL, donde la app Streamlit los consulta en tiempo real mediante queries parametrizadas.
+**La decisión:** backtest y forecast viven en la misma tabla `predictions`, distinguidas por si `actual_units` es NULL o no.
 
-### Paso 6 — Consumo en la app
-La app Streamlit (desplegada en ECS Fargate) expone los resultados a usuarios de negocio. Todas las queries pasan por `data/rds.py`, que gestiona el connection pooling y los parámetros de seguridad.
+**Por qué:** el modelo de datos es el mismo: `(shop, item, fecha) → predicción`. Separarlas duplicaba schema y queries sin razón. Tuvimos un bug temprano donde los forecasts quedaron como `NaN` literal en lugar de NULL — lo encontramos y arreglamos antes del demo.
+
+### 4.3 SQLAlchemy Core en lugar de ORM
+
+Las queries son agregaciones y joins explícitos, no operaciones sobre objetos. Core es más cercano a SQL puro y sin sorpresas de carga lazy. El ORM agregaba complejidad sin pagarla en valor.
+
+### 4.4 Features en memoria, no en una capa Gold persistida
+
+Los lags y rolling means se calculan en memoria al inicio del training. Lo correcto en producción es persistirlos como capa Gold. No lo hicimos por tiempo — queda como deuda técnica documentada con su solución dimensionada.
+
+### 4.5 Ownership distribuido pero pragmático
+
+Antonio diseñó la infraestructura, los loaders y las vistas 1 y 2. Gustavo construyó el pipeline ML completo y las vistas 3 y 4. El riesgo crítico era el modelo — si LightGBM no le ganaba al naive, no había producto. Concentrar ese riesgo en una persona y dejar a la otra avanzar la infraestructura en paralelo redujo dependencias. Las dos piezas encajaron porque desde el inicio acordamos los contratos de datos: nombres de tablas, columnas, formatos de parquet.
 
 ---
 
-## 5. Modelo de datos (RDS)
+## 5. Evaluación del Modelo
 
-La base de datos `forecasting` en RDS PostgreSQL almacena todo lo que la aplicación necesita para operar: predicciones, métricas del modelo, catálogos de referencia, historial de exportaciones y retroalimentación del negocio.
+### 5.1 Métricas globales
 
-### Tablas principales
-
-| Tabla | Propósito | Escribe | Lee |
+| Métrica | Modelo LightGBM | Baseline Naive (lag_1) | Mejora |
 |---|---|---|---|
-| `predictions` | Pronósticos por tienda, producto y mes. Incluye el valor real cuando ya ocurrió. | Pipeline de ML (`db/load_predictions.py`) | App Streamlit (todas las vistas) |
-| `metrics` | MAE, RMSE y comparación vs baseline naive por categoría de producto. | Pipeline de evaluación (`db/load_metrics.py`) | Vista de Evaluación del Modelo |
-| `products` | Catálogo de productos con nombre y categoría. | Script de carga (`db/load_all.py`) | App Streamlit (filtros y joins) |
-| `shops` | Catálogo de tiendas con nombre y ciudad. | Script de carga (`db/load_all.py`) | App Streamlit (filtros y joins) |
-| `batch_jobs` | Registro de exportaciones CSV solicitadas desde la app. | App Streamlit (batch export) | App Streamlit (historial) |
-| `feedback` | Comentarios del negocio sobre pronósticos específicos. | App Streamlit (usuarios de negocio) | App Streamlit (vista de feedback) |
+| MAE | **0.30** | 1.18 | 74% |
+| RMSE | **0.72** | 2.16 | 67% |
 
-> **Diagrama ERD:** ver `docs/erd.md`.
+El modelo se equivoca en promedio 0.30 unidades por predicción vs 1.18 del naive. El MAE bajo pero RMSE relativamente mayor indica que el modelo es muy preciso en la mayoría de SKUs (baja rotación) pero comete errores más grandes en algunos productos de alto volumen — aceptable para el caso de uso de 1C.
 
-![ERD](docs/screenshots/erd.png)
+### 5.2 Métricas por categoría (top 10 por volumen)
 
-La clave de diseño es que `predictions` vincula tiendas, productos y fechas en una sola tabla. Cuando `actual_units IS NULL`, el registro es un pronóstico futuro. Cuando tiene valor, es un dato histórico que permite calcular el error del modelo.
+| Categoría | Observaciones | MAE Modelo | MAE Naive | Modelo gana |
+|---|---|---|---|---|
+| Music - CD of local production | 7,846 | 0.0481 | 0.42 | ✓ |
+| Games PC - Standard Edition | 6,060 | 0.2332 | 1.44 | ✓ |
+| Movie - DVD | 5,705 | 0.0805 | 0.60 | ✓ |
+| Games - XBOX 360 | 3,180 | 0.186 | 1.12 | ✓ |
+| Games - PS3 | 3,150 | 0.171 | 1.17 | ✓ |
+| Games - PS4 | 1,727 | 0.239 | 1.49 | ✓ |
+| Movies - Blu-Ray | 1,588 | 0.071 | 0.66 | ✓ |
+| Gifts - Games (compact) | 1,454 | 0.254 | 1.26 | ✓ |
+| Gifts - Board Games | 1,301 | 0.093 | 0.73 | ✓ |
+| Games PC - Additional publications | 1,089 | 0.176 | 1.23 | ✓ |
+
+### 5.3 ¿Dónde falla el modelo?
+
+El modelo gana al naive en **53 de 57 categorías evaluadas (93%)**. Las 4 donde no gana:
+
+- **"Delivery of goods"** — cargo operativo, no producto físico. No es donde el negocio toma decisiones de compra.
+- **"Payment cards - Live!"** — tarjetas prepagadas con comportamiento errático que las features actuales no capturan.
+- **Las otras dos** — 1 y 2 observaciones respectivamente. Sin material para aprender.
+
+El patrón es claro: el modelo pierde solo en categorías de naturaleza operativa o estadísticamente irrelevantes. En todo el catálogo real de compras, gana consistentemente.
+
+### 5.4 Fortalezas y limitaciones
+
+El modelo entrena en 25 segundos con 200K observaciones — re-entrenamiento mensual es trivial. Las predicciones están acotadas a no-negativas (clipping a min 0). La validación es temporalmente honesta: split por percentil 80% de fechas.
+
+Limitaciones conocidas: el forecast cubre solo las 8,675 combinaciones tienda-producto con actividad reciente; no usamos features externas (festividades, lanzamientos, precios).
 
 ---
 
 ## 6. Aplicación Streamlit
 
-La app es el punto de contacto entre los datos y el negocio. Está desplegada públicamente en http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com y tiene cuatro secciones:
+La app está desplegada en http://forecast-app-alb-33822663.us-east-1.elb.amazonaws.com con cuatro secciones:
 
 ### Exploración de Pronósticos
-El usuario puede filtrar por **tienda** o **categoría** y ver dos vistas:
-- El histórico de predicciones vs ventas reales (para evaluar confianza en el modelo)
-- La proyección de la próxima temporada
-
-Esto responde directamente a la pregunta del negocio: *"¿Cuánto se va a vender el próximo mes en mi tienda?"*
+Filtro por tienda o categoría. Muestra el histórico predicho vs real y la proyección de la próxima temporada. Responde: *"¿Cuánto se va a vender el próximo mes en mi tienda?"*
 
 ### Exportación Masiva
-Permite descargar un CSV de pronósticos filtrado por tienda, categoría o catálogo completo, directamente desde el browser. Diseñado para Finanzas: sin acceso a SQL, sin depender del equipo técnico.
+CSV descargable filtrado por tienda, categoría o catálogo completo. Sin acceso a SQL, sin depender del equipo técnico.
 
 ### Evaluación del Modelo
-Muestra el MAE y RMSE ponderados a nivel global y por categoría, comparados contra un baseline naive. Incluye un scatter chart de predicho vs real para validación visual. El filtro por categoría y tienda permite al equipo técnico auditar el comportamiento del modelo en segmentos específicos.
+MAE y RMSE globales y por categoría vs baseline naive. Scatter chart predicho vs real con filtros por categoría y tienda.
 
 ### Retroalimentación del Negocio
-Los usuarios pueden reportar problemas con pronósticos específicos (búsqueda por item_id, tienda y comentario libre). El historial de reportes puede filtrarse por estado: abierto, revisado o resuelto. Cierra el ciclo entre el modelo y el negocio.
+Reporte de problemas por item_id y tienda. Historial filtrable por estado: abierto, revisado, resuelto.
 
 ### Screenshots de la aplicación
 
@@ -169,33 +228,13 @@ Los usuarios pueden reportar problemas con pronósticos específicos (búsqueda 
 
 ## 7. Despliegue
 
-La infraestructura completa se despliega con un solo comando de CloudFormation desde AWS CloudShell.
-
 ### Stack de infraestructura (`infra/core.yaml`)
 - RDS PostgreSQL 17 (db.t3.micro, almacenamiento encriptado)
 - ECS Fargate cluster + service + task definition
-- ALB internet-facing con health check en `/_stcore/health`
-- Secrets Manager con las credenciales de RDS
-- IAM roles con principio de mínimo privilegio (acceso a secrets scoped por ARN)
+- ALB con health check en `/_stcore/health`
+- Secrets Manager con credenciales de RDS
+- IAM roles con mínimo privilegio (secrets scoped por ARN)
 - CloudWatch log group
-
-### Pipeline de deploy
-
-```
-Código (GitHub)
-      │
-      ▼
-Docker build (SageMaker)
-      │
-      ▼
-ECR (imagen versionada)
-      │
-      ▼
-ECS Fargate (nuevo deployment)
-      │
-      ▼
-ALB → app pública
-```
 
 **Build y push de imagen** (desde SageMaker):
 ```bash
@@ -214,9 +253,7 @@ aws ecs update-service \
     --region us-east-1
 ```
 
-### Credenciales
-
-En producción (ECS), la app obtiene las credenciales de RDS automáticamente desde Secrets Manager. En local, se usan variables de entorno. El código en `data/rds.py` resuelve ambos casos sin configuración adicional.
+En producción (ECS), la app obtiene credenciales de RDS desde Secrets Manager. En local, desde variables de entorno. `data/rds.py` resuelve ambos casos sin configuración adicional.
 
 ### Screenshots de AWS
 
@@ -239,14 +276,11 @@ En producción (ECS), la app obtiene las credenciales de RDS automáticamente de
 
 ## 8. Operación
 
-### Logs
-Todos los logs de la app (queries, errores, feedback registrado) van a **CloudWatch Logs** bajo el grupo `/ecs/forecast-app`. El logging usa un formato estructurado con timestamps y contexto, compatible con filtros y alarmas de CloudWatch.
+**Logs:** van a CloudWatch Logs bajo `/ecs/forecast-app`, formato estructurado con timestamps y contexto.
 
-### Manejo de fallas
-La app maneja errores de conectividad a RDS de forma explícita: cada vista muestra un mensaje de error descriptivo en lugar de fallar silenciosamente. El ALB tiene health checks cada 30 segundos y reemplaza automáticamente tareas no saludables.
+**Fallas:** cada vista muestra un error descriptivo si RDS no responde. El ALB tiene health checks cada 30s y reemplaza tareas no saludables automáticamente.
 
-### Disponibilidad
-ECS Fargate mantiene la tarea en ejecución continua. Si el contenedor falla, ECS lo reemplaza automáticamente. El ALB gestiona el zero-downtime durante re-deploys gracias al rolling deployment configurado en la task definition.
+**Disponibilidad:** ECS Fargate mantiene la tarea corriendo y la reemplaza si falla. Rolling deployment garantiza zero-downtime en re-deploys.
 
 ---
 
@@ -257,12 +291,10 @@ ECS Fargate mantiene la tarea en ejecución continua. Si el contenedor falla, EC
 | RDS db.t3.micro (PostgreSQL) | ~$15 USD |
 | ECS Fargate (0.25 vCPU / 0.5 GB, 24/7) | ~$10 USD |
 | ALB | ~$18 USD |
-| S3 (< 5 GB) | < $1 USD |
-| Secrets Manager (1 secreto) | < $1 USD |
-| CloudWatch Logs | < $1 USD |
-| **Total estimado** | **~$45 USD/mes** |
+| S3, Secrets Manager, CloudWatch | < $3 USD |
+| **Total estimado** | **~$46 USD/mes** |
 
-Para un POC o entorno de desarrollo, el costo puede reducirse apagando RDS e ECS fuera de horario (~70% de ahorro). Para producción real, el costo escala principalmente con el tamaño de RDS y la carga en Fargate.
+Para POC o desarrollo: apagar RDS e ECS fuera de horario reduce ~70% del costo.
 
 ---
 
@@ -288,29 +320,33 @@ Para un POC o entorno de desarrollo, el costo puede reducirse apagando RDS e ECS
 
 ## 11. Uso de Herramientas de IA en el Proyecto
 
-Como requisito de transparencia académica, el equipo declara el siguiente uso de herramientas de inteligencia artificial:
-
-**Herramienta utilizada:** GitHub Copilot (Claude Sonnet) — asistente integrado en VS Code.
-
-**Para qué se utilizó:**
+**Herramienta:** GitHub Copilot (Claude Sonnet) — asistente integrado en VS Code.
 
 | Área | Uso específico |
 |---|---|
-| Consultas técnicas | Resolver dudas sobre APIs de SQLAlchemy, psycopg v3, Streamlit y boto3 |
-| Revisión de sintaxis | Identificar errores de sintaxis y sugerencias de corrección en Python |
-| Documentación | Apoyo en redacción de docstrings y secciones del README |
-| Comandos de AWS CLI | Consultar la sintaxis correcta de comandos `aws ecs`, `aws ecr`, `aws cloudformation` |
-| Debugging | Orientación para interpretar stack traces y mensajes de error |
+| Consultas técnicas | Dudas sobre SQLAlchemy, psycopg v3, Streamlit, boto3 |
+| Revisión de sintaxis | Errores de sintaxis en Python |
+| Documentación | Apoyo en redacción de docstrings y README |
+| Comandos AWS CLI | Sintaxis de `aws ecs`, `aws ecr`, `aws cloudformation` |
+| Debugging | Interpretación de stack traces |
 
-**Lo que NO fue generado por IA:** el diseño de la arquitectura, las decisiones de modelado, la estructura del repositorio, el esquema de la base de datos, el pipeline ETL, la lógica de las vistas de Streamlit, el stack de CloudFormation y los tests unitarios son producto del trabajo original del equipo.
+El diseño de la arquitectura, las decisiones de modelado, el schema, el pipeline ETL, la lógica de las vistas, el CloudFormation y los tests son trabajo original del equipo. Las herramientas de IA se usaron como apoyo puntual — equivalente a documentación oficial o Stack Overflow.
 
-El código, los diagramas y la explicación del diseño fueron desarrollados, revisados y validados por los autores. Las herramientas de IA se usaron como apoyo puntual equivalente al uso de documentación oficial o Stack Overflow.
+---
+
+## 12. Conclusiones
+
+El producto funciona y entrega valor concreto: pronósticos accionables con respaldo cuantitativo, una interfaz que cuatro tipos de usuarios pueden usar para sus problemas distintos, y una arquitectura que el equipo de TI de 1C puede operar y extender sin nuestra presencia.
+
+Las decisiones técnicas — pre-cómputo offline, una sola tabla de predicciones, SQLAlchemy Core, features en memoria — fueron pragmáticas y conscientes. Cada sacrificio de elegancia arquitectónica fue por velocidad de entrega del MVP, y cada uno queda documentado como deuda técnica con su solución dimensionada.
+
+El modelo le gana al baseline en el 93% de las categorías, y específicamente en todas donde el negocio toma decisiones reales de compra. Para la siguiente versión el camino es claro: capa Gold persistida, features externas, job programado de re-entrenamiento. Cada uno se mide en días, no semanas. El producto está listo para uso real.
 
 ---
 
 ## Reporte del POC
 
-El documento `docs/reporte.md` contiene el reporte autocontenido del sistema: descripción del problema, arquitectura, modelo de datos, evaluación del modelo, tour de la app y consideraciones de costo. Es el artefacto de revisión independiente del README.
+El documento `docs/reporte.md` contiene el reporte autocontenido: descripción del problema, arquitectura, modelo de datos, evaluación, tour de la app y consideraciones de costo. Artefacto de revisión independiente del README.
 
 ---
 
@@ -321,3 +357,47 @@ El documento `docs/reporte.md` contiene el reporte autocontenido del sistema: de
 - Diagrama de arquitectura (editable): `docs/arquitectura.drawio`
 - Diagrama ERD (editable): `docs/erd.drawio`
 - Documentación de módulos Python: `docs/api/`
+
+---
+
+## Anexo A — Estructura del repositorio
+
+```
+data-product-forecasting/
+├── etl/                # ETL: bronze, silver, features
+├── training/           # Pipeline de entrenamiento
+├── evaluation/         # Métricas globales y por categoría
+├── inference/          # Generación de predicciones
+├── db/                 # Schema y loaders a RDS
+├── data/               # rds.py: capa de conexión SQLAlchemy
+├── app/                # Streamlit: main, pages, components
+├── infra/              # CloudFormation templates
+├── artifacts/          # Modelos y predicciones (gitignored)
+├── config.py           # Configuración centralizada
+├── pyproject.toml      # uv + dependencias
+└── Dockerfile          # Imagen para ECS Fargate
+```
+
+## Anexo B — Comandos de verificación
+
+```bash
+# Verificar conectividad a RDS
+uv run python scripts/check_rds.py
+
+# Ejecutar todos los tests
+uv run pytest -v
+
+# Levantar la app local (requiere env vars de RDS)
+uv run streamlit run app/main.py
+
+# Validar conteos en RDS
+uv run python -c "
+from sqlalchemy import text
+from data.rds import _get_engine
+with _get_engine().connect() as c:
+    print('Predicciones:', c.execute(text('SELECT COUNT(*) FROM predictions')).scalar())
+    print('Metricas:', c.execute(text('SELECT COUNT(*) FROM metrics')).scalar())
+    print('Productos:', c.execute(text('SELECT COUNT(*) FROM products')).scalar())
+    print('Tiendas:', c.execute(text('SELECT COUNT(*) FROM shops')).scalar())
+"
+```

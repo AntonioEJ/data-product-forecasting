@@ -113,6 +113,8 @@ La estructura de cuatro vistas no fue arbitraria. Cada una resuelve un problema 
 
 > **Diagrama de arquitectura:** ver [docs/arquitectura.md](docs/arquitectura.md).
 
+![Diagrama de arquitectura](docs/screenshots/arquitectura.drawio.png)
+
 ---
 
 ## 4. Decisiones de Diseño y Trade-offs
